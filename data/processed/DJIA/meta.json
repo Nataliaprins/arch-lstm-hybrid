@@ -1,0 +1,22 @@
+{
+  "ticker": "^DJI",
+  "name": "DJIA",
+  "returns_scale": 100,
+  "n_total": 2786,
+  "n_train": 2228,
+  "n_val": 279,
+  "n_test": 279,
+  "mu_train": 0.03447922741653291,
+  "train_var_eps": 1.3094563701021542,
+  "split_dates": {
+    "train_start": "2015-06-02",
+    "train_end": "2024-04-08",
+    "val_start": "2024-04-09",
+    "val_end": "2025-05-19",
+    "test_start": "2025-05-20",
+    "test_end": "2026-06-30"
+  },
+  "prices_start": "2015-06-01",
+  "prices_end": "2026-06-30",
+  "n_prices": 2787
+}

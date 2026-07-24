@@ -1,0 +1,73 @@
+# ── config.yaml — Replicación JRFM-4427748 ─────────────────────────────────
+# Configuración central del pipeline. Modificar aquí; el código lee de aquí.
+
+paths:
+  raw_data:       data/raw
+  processed_data: data/processed
+  outputs:        outputs
+  tables:         outputs/tables
+  figures:        outputs/figures
+  models:         outputs/models
+  logs:           logs
+  stamps:         .stamps
+
+series:
+  - name:   BTC-USD
+    ticker:  BTC-USD
+    start:  "2013-04-28"
+    end:    "2026-07-01"
+  - name:   ETH-USD
+    ticker:  ETH-USD
+    start:  "2015-08-07"
+    end:    "2026-07-01"
+  - name:   DJIA
+    ticker:  "^DJI"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+  - name:   SP500
+    ticker:  "^GSPC"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+
+split:
+  train_frac: 0.80
+  val_frac:   0.10
+  # test_frac = 1 - train_frac - val_frac = 0.10 (implícito)
+
+seed: 42        # semilla base; derivar S semillas como seed + i
+n_seeds: 10     # S = 10 semillas para modelos neuronales
+
+window_size: 22 # longitud de la ventana de entrada para redes (≈ 1 mes bursátil)
+
+returns_scale: 100   # escalar 100×log-ret → puntos porcentuales
+
+# ── Espacio de búsqueda de hiperparámetros (compartido por todos los modelos DL) ──
+hyperparameter_search:
+  lstm_units:    [16, 32, 64, 128]
+  nu:            [3, 4, 5, 6, 7, 8]          # grados de libertad Student-t
+  dropout:       [0.0, 0.1, 0.2, 0.3]
+  lambda_values: [0.1, 0.3, 0.5, 0.7, 0.9]   # peso pérdida híbrida
+  batch_size:    [32, 64, 128]
+  max_epochs:    1000
+  patience:      20    # early-stopping
+  n_trials:      50    # ensayos Keras Tuner
+  cv_splits:     5     # TimeSeriesSplit k-folds
+
+# ── Análisis de sensibilidad de λ (exigido por Jurado 1) ──
+lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+
+# ── Model Confidence Set ──
+mcs:
+  level:       0.90
+  n_bootstrap: 10000
+  block_size:  20
+
+# ── Diebold-Mariano ──
+dm_test:
+  bandwidth: null   # null → automático: floor(4*(T/100)^(2/9))
+
+# ── VaR/ES backtests ──
+var_confidence_levels: [0.99, 0.975]
+
+# ── Verificación varianza incondicional ──
+unconditional_var_tolerance: 0.20   # aviso si difiere > 20%

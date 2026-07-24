@@ -1,0 +1,22 @@
+{
+  "ticker": "ETH-USD",
+  "name": "ETH-USD",
+  "returns_scale": 100,
+  "n_total": 3155,
+  "n_train": 2524,
+  "n_val": 315,
+  "n_test": 316,
+  "mu_train": 0.08007865521690159,
+  "train_var_eps": 21.732773580767336,
+  "split_dates": {
+    "train_start": "2017-11-10",
+    "train_end": "2024-10-07",
+    "val_start": "2024-10-08",
+    "val_end": "2025-08-18",
+    "test_start": "2025-08-19",
+    "test_end": "2026-06-30"
+  },
+  "prices_start": "2017-11-09",
+  "prices_end": "2026-06-30",
+  "n_prices": 3156
+}

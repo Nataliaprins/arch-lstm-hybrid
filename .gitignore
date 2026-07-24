@@ -1,0 +1,34 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Stage markers
+.stamps/
+
+# Outputs (generated — not committed)
+outputs/tables/*
+outputs/figures/*
+outputs/models/*
+logs/*
+
+# Data raw cache (commit to preserve reproducibility, or exclude if large)
+# data/raw/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
