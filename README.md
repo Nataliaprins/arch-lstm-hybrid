@@ -1,36 +1,7 @@
-# Replication Repository — JRFM-4427748
+# Repository — Thesis
 # LSTM-SSE-t-Student: Hybrid Loss for Volatility Forecasting
 
-End-to-end reproducible replication repository for the paper
-**"LSTM-SSE-t-Student: A Hybrid Loss for Conditional Volatility Forecasting"**.
-All tables and figures in the paper are generated automatically; no number is hand-written.
 
----
-
-## Reviewer requirements → implementation map
-
-| Reviewer requirement | File / module |
-|---|---|
-| Shared 80/20 chronological split across all models | `src/data/build_dataset.py` |
-| 100×log-return scale | `config/config.yaml` → `returns_scale: 100` |
-| Student-t innovations in all GARCH models | `src/models/econometric.py` (`dist="t"`) |
-| ε²_t proxy for all models | `src/data/build_dataset.py` → `eps2_*.csv` |
-| OOS LL_t for all models (never in-sample) | `src/eval/metrics.py` → `ll_t_oos()` |
-| S=10 seeds, mean ± s.d. for neural models | `src/tuning/tune_and_train.py` |
-| Convergence check + Hessian PD | `src/models/econometric.py` → `_hessian_pd()` |
-| DJIA anomaly log | `logs/djia_anomaly.log` |
-| Hybrid SSE-t loss (proposed, published explicitly) | `src/losses/hybrid_student_t.py` |
-| NN-GARCH augmenting GARCH recursion (Reviewer 2) | `src/models/neural.py` → `build_nn_garch()` |
-| MSGARCH two-state Markov (Reviewer 2) | `R/msgarch.R` |
-| λ sensitivity analysis (Reviewer 1) | `src/tuning/tune_and_train.py` → `_lambda_sensitivity()` |
-| DM test + Holm–Bonferroni per market (Reviewer 1) | `src/eval/dm_test.py` |
-| Model Confidence Set 90% | `src/eval/mcs.py` |
-| VaR/ES Kupiec + Christoffersen backtests (Reviewer 1) | `src/eval/var_es_backtest.py` |
-| Bootstrap 95% CI for MSE/MAE | `src/eval/bootstrap.py` |
-| Tables 3–9 + 4+A1–A4 in .csv/.tex/.docx | `src/reporting/build_tables.py` |
-| Figures (λ sensitivity, train/val, gate dynamics) | `src/reporting/build_figures.py` |
-
----
 
 ## Quick start
 
