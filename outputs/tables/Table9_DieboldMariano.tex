@@ -1,0 +1,23 @@
+\begin{table}[ht]
+\centering
+\caption{Table 9. Diebold–Mariano Tests}
+\label{tab:dm}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+ & ('BTC-USD', 'DM') & ('BTC-USD', 'p(Holm)') & ('ETH-USD', 'DM') & ('ETH-USD', 'p(Holm)') & ('DJIA', 'DM') & ('DJIA', 'p(Holm)') & ('SP500', 'DM') & ('SP500', 'p(Holm)') \\
+\midrule
+ARCH(1) & — & — & — & — & — & — & — & — \\
+CNN-LSTM & — & — & — & — & — & — & — & — \\
+EGARCH(1,1) & — & — & — & — & — & — & — & — \\
+FIGARCH(1,d,1) & — & — & — & — & — & — & — & — \\
+GARCH(1,1) & — & — & — & — & — & — & — & — \\
+GJR-GARCH(1,1) & — & — & — & — & — & — & — & — \\
+HAR & — & — & — & — & — & — & — & — \\
+LSTM-Attention & — & — & — & — & — & — & — & — \\
+LSTM-SSE & — & — & — & — & — & — & — & — \\
+NN-GARCH & — & — & — & — & — & — & — & — \\
+SVR-GARCH & — & — & — & — & — & — & — & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Diebold–Mariano test: LSTM-SSE-t-Student vs. each rival model. Loss function: QLIKE. HAC SE (Newey–West, bandwidth ⌊4(T/100)^{2/9}⌋). p(Holm): p-value after Holm–Bonferroni FWER correction per market. Positive DM stat: rival has higher loss → proposed wins. Significance: *** p<0.01, ** p<0.05, * p<0.10 (after Holm).
+\end{table}

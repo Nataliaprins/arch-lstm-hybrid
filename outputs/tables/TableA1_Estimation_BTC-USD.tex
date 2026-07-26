@@ -1,0 +1,37 @@
+\begin{table}[ht]
+\centering
+\caption{Table A1. Parameter Estimates — BTC-USD}
+\label{tab:est_btc-usd}
+\begin{tabular}{lrrrrrrr}
+\toprule
+ & ARCH(1) & GARCH(1,1) & EGARCH(1,1) & GJR-GARCH(1,1) & FIGARCH(1,d,1) & HAR & MSGARCH(1,1) \\
+\midrule
+omega & 23.2919 & 0.1600 & 0.0971 & 0.1256 & 0.2803 & — & — \\
+alpha[1] & 1.0000 & 0.1065 & 0.2729 & 0.1159 & — & — & — \\
+gamma[1] & — & — & — & -0.0379 & — & — & — \\
+beta[1] & — & 0.8935 & 0.9876 & 0.9030 & — & — & — \\
+phi[1] & — & — & — & — & — & — & — \\
+d & — & — & — & — & 0.7185 & — & — \\
+const & — & — & — & — & — & 7.6838 & — \\
+beta_d & — & — & — & — & — & 0.0855 & — \\
+beta_w & — & — & — & — & — & 0.0754 & — \\
+beta_m & — & — & — & — & — & 0.2789 & — \\
+omega1 & — & — & — & — & — & — & — \\
+alpha1 & — & — & — & — & — & — & — \\
+beta1 & — & — & — & — & — & — & — \\
+omega2 & — & — & — & — & — & — & — \\
+alpha2 & — & — & — & — & — & — & — \\
+beta2 & — & — & — & — & — & — & — \\
+p11 & — & — & — & — & — & — & — \\
+p22 & — & — & — & — & — & — & — \\
+nu & 2.2725 & 3.1688 & 2.6342 & 3.2015 & 3.2299 & — & — \\
+LL_insample & -8799.3683 & -8616.4170 & -8589.6172 & -8613.7130 & -8615.9941 & -18234.5854 & — \\
+AIC & 17606.7366 & 17242.8339 & 17189.2345 & 17239.4259 & 17243.9881 & 36477.1708 & — \\
+BIC & 17631.3130 & 17273.5544 & 17219.9550 & 17276.2905 & 17280.8527 & 36501.7216 & — \\
+convergence & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & — \\
+hess_pd & — & — & — & — & — & — & — \\
+n_obs & 3443.0000 & 3443.0000 & 3443.0000 & 3443.0000 & 3443.0000 & 3421.0000 & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Series: BTC-USD. Returns in 100×log-ret (pp). All parametric models: Student-t innovations. '—' = parameter not defined in this specification. LL_insample: total log-likelihood on training sample. Standard errors: Bollerslev–Wooldridge robust. *** p<0.01.
+\end{table}

@@ -1,0 +1,30 @@
+\begin{table}[ht]
+\centering
+\caption{Table 4. GARCH(1,1) Parameter Estimates}
+\label{tab:garch_est}
+\begin{tabular}{lrrrr}
+\toprule
+ & BTC-USD & ETH-USD & DJIA & SP500 \\
+\midrule
+Panel A: Parameters &  &  &  &  \\
+ω (omega) & 0.1600 & 0.3901 & 0.0219 & 0.0179 \\
+α₁ (alpha[1]) & 0.1065 & 0.1000 & 0.1686 & 0.1703 \\
+β₁ (beta[1]) & 0.8935 & 0.9000 & 0.8235 & 0.8297 \\
+ν (nu) & 3.1688 & 3.3496 & 5.5343 & 5.6055 \\
+Panel B: Persistence &  &  &  &  \\
+α₁+β₁ & 1.0000 & 1.0000 & 0.9922 & 1.0000 \\
+Half-life (days) & — & — & 88.0900 & — \\
+Stationary (α+β<1) & False & False & True & False \\
+Unconditional σ² = ω/(1−α−β) & — & — & 2.7998 & — \\
+Panel C: In-sample fit &  &  &  &  \\
+LL (in-sample) & -8616.4170 & -7050.7330 & -2727.0681 & -2813.1074 \\
+AIC & 17242.8339 & 14111.4660 & 5464.1362 & 5636.2148 \\
+BIC & 17273.5544 & 14140.6340 & 5492.6805 & 5664.7591 \\
+N (obs) & 3443.0000 & 2524.0000 & 2228.0000 & 2228.0000 \\
+Panel D: Diagnostics &  &  &  &  \\
+Convergence flag & 0.0000 & 0.0000 & 0.0000 & 0.0000 \\
+Hessian PD & — & — & — & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} GARCH(1,1) with Student-t innovations estimated by MLE. Returns in 100×log-ret (pp). Standard errors: Bollerslev–Wooldridge robust (outer-product of gradient). Unconditional variance = ω/(1−α₁−β₁); compared to empirical ε² variance (warning if deviation > 20%). Half-life = ln(0.5)/ln(α₁+β₁). *** p<0.01, ** p<0.05, * p<0.10.
+\end{table}

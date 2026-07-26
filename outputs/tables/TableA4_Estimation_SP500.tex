@@ -1,0 +1,37 @@
+\begin{table}[ht]
+\centering
+\caption{Table A4. Parameter Estimates — SP500}
+\label{tab:est_sp500}
+\begin{tabular}{lrrrrrrr}
+\toprule
+ & ARCH(1) & GARCH(1,1) & EGARCH(1,1) & GJR-GARCH(1,1) & FIGARCH(1,d,1) & HAR & MSGARCH(1,1) \\
+\midrule
+omega & 0.7483 & 0.0179 & 0.0126 & 0.0228 & 0.0272 & — & — \\
+alpha[1] & 0.6340 & 0.1703 & 0.3202 & 0.0228 & — & — & — \\
+gamma[1] & — & — & — & 0.2627 & — & — & — \\
+beta[1] & — & 0.8297 & 0.9736 & 0.8339 & — & — & — \\
+phi[1] & — & — & — & — & — & — & — \\
+d & — & — & — & — & 0.5548 & — & — \\
+const & — & — & — & — & — & 0.3281 & — \\
+beta_d & — & — & — & — & — & 0.2130 & — \\
+beta_w & — & — & — & — & — & 0.4617 & — \\
+beta_m & — & — & — & — & — & 0.0831 & — \\
+omega1 & — & — & — & — & — & — & — \\
+alpha1 & — & — & — & — & — & — & — \\
+beta1 & — & — & — & — & — & — & — \\
+omega2 & — & — & — & — & — & — & — \\
+alpha2 & — & — & — & — & — & — & — \\
+beta2 & — & — & — & — & — & — & — \\
+p11 & — & — & — & — & — & — & — \\
+p22 & — & — & — & — & — & — & — \\
+nu & 3.3552 & 5.6055 & 5.4661 & 5.7283 & 5.8956 & — & — \\
+LL_insample & -3013.8153 & -2813.1074 & -2818.7445 & -2781.9799 & -2806.4681 & -6562.1515 & — \\
+AIC & 6035.6306 & 5636.2148 & 5647.4890 & 5575.9598 & 5624.9361 & 13132.3029 & — \\
+BIC & 6058.4661 & 5664.7591 & 5676.0333 & 5610.2130 & 5659.1893 & 13155.0986 & — \\
+convergence & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & — \\
+hess_pd & — & — & — & — & — & — & — \\
+n_obs & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2206.0000 & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Series: SP500. Returns in 100×log-ret (pp). All parametric models: Student-t innovations. '—' = parameter not defined in this specification. LL_insample: total log-likelihood on training sample. Standard errors: Bollerslev–Wooldridge robust. *** p<0.01.
+\end{table}

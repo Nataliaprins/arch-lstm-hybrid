@@ -1,0 +1,21 @@
+\begin{table}[ht]
+\centering
+\caption{Table 7. OOS Forecasting Performance — SP500}
+\label{tab:oos_sp500}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 \\
+\midrule
+Panel A & --- Panel A --- & — & — & — & — & — & — & — \\
+ARCH(1) & 2.00740 & 1.41683 & 1.01764 & -0.5981 & 0.67303 & -1.2020 & +51.30\% & Yes \\
+GARCH(1,1) & 1.32676 & 1.15185 & 0.70795 & -0.0562 & 0.58989 & -1.1537 & — & Yes \\
+EGARCH(1,1) & 1.33180 & 1.15404 & 0.72673 & -0.0602 & 0.59146 & -1.1570 & — & Yes \\
+GJR-GARCH(1,1) & \textbf{1.27924} & \textbf{1.13104} & 0.69498 & \textbf{-0.0184} & \textbf{0.53541} & \textbf{-1.1381} & — & Yes \\
+FIGARCH(1,d,1) & 1.30434 & 1.14208 & \textbf{0.68017} & -0.0384 & 0.57223 & -1.1548 & — & Yes \\
+HAR & 1.40238 & 1.18422 & 0.76469 & -0.1164 & 0.55637 & -1.1594 & +5.70\% & Yes \\
+Panel B & --- Panel B --- & — & — & — & — & — & — & — \\
+Panel C & --- Panel C --- & — & — & — & — & — & — & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 279 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

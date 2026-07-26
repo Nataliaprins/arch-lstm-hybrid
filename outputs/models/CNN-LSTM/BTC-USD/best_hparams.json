@@ -1,0 +1,7 @@
+{
+  "lstm_units": 128,
+  "dropout": 0.1,
+  "batch_size": 32,
+  "learning_rate": 0.0005,
+  "window_size": 22
+}

@@ -1,0 +1,13 @@
+,BTC-USD,BTC-USD,ETH-USD,ETH-USD,DJIA,DJIA,SP500,SP500
+,DM,p(Holm),DM,p(Holm),DM,p(Holm),DM,p(Holm)
+ARCH(1),—,—,—,—,—,—,—,—
+CNN-LSTM,—,—,—,—,—,—,—,—
+"EGARCH(1,1)",—,—,—,—,—,—,—,—
+"FIGARCH(1,d,1)",—,—,—,—,—,—,—,—
+"GARCH(1,1)",—,—,—,—,—,—,—,—
+"GJR-GARCH(1,1)",—,—,—,—,—,—,—,—
+HAR,—,—,—,—,—,—,—,—
+LSTM-Attention,—,—,—,—,—,—,—,—
+LSTM-SSE,—,—,—,—,—,—,—,—
+NN-GARCH,—,—,—,—,—,—,—,—
+SVR-GARCH,—,—,—,—,—,—,—,—

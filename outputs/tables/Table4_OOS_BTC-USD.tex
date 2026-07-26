@@ -1,0 +1,26 @@
+\begin{table}[ht]
+\centering
+\caption{Table 4. OOS Forecasting Performance — BTC-USD}
+\label{tab:oos_btc-usd}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 \\
+\midrule
+Panel A & --- Panel A --- & — & — & — & — & — & — & — \\
+ARCH(1) & 818.91685 & 28.61672 & 24.75150 & -2.7992 & 3.45953 & -2.5062 & +280.42\% & Yes \\
+GARCH(1,1) & 215.26829 & 14.67202 & 6.47578 & 0.0013 & 2.49608 & -2.1186 & — & Yes \\
+EGARCH(1,1) & 243.67230 & 15.61001 & 8.62743 & -0.1305 & 2.63796 & -2.1697 & — & Yes \\
+GJR-GARCH(1,1) & 216.62625 & 14.71823 & 6.27776 & -0.0050 & 2.50597 & -2.1201 & — & Yes \\
+FIGARCH(1,d,1) & 213.12245 & 14.59871 & 6.23552 & 0.0113 & \textbf{2.47969} & \textbf{-2.1143} & — & Yes \\
+HAR & 225.18016 & 15.00600 & 8.82689 & -0.0447 & 2.72945 & -2.2003 & +4.60\% & Yes \\
+Panel B & --- Panel B --- & — & — & — & — & — & — & — \\
+SVR-GARCH & \textbf{212.97114 ± nan} & \textbf{14.59353} & \textbf{4.82759 ± nan} & \textbf{0.0120} & 15377730.75878 & -3.0126 & — & Yes \\
+NN-GARCH & 250.71758 ± 54.12701 & 15.83406 & 6.33794 ± 0.31812 & -0.1632 & 2.69449 & -2.1882 & — & Yes \\
+LSTM-SSE & 225.33893 ± 0.50310 & 15.01129 & 7.61314 ± 0.05275 & -0.0454 & 2.68608 & -2.1771 & +4.68\% & Yes \\
+CNN-LSTM & 253.22478 ± 99.25189 & 15.91304 & 6.53061 ± 0.90982 & -0.1748 & 2.94936 & -2.2491 & +17.63\% & Yes \\
+LSTM-Attention & 225.30482 ± 0.58432 & 15.01016 & 7.60691 ± 0.07142 & -0.0453 & 2.68581 & -2.1770 & +4.66\% & Yes \\
+Panel C & --- Panel C --- & — & — & — & — & — & — & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 431 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

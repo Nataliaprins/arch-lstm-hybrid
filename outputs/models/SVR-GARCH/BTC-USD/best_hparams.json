@@ -1,0 +1,6 @@
+{
+  "window_size": 22,
+  "C": 10.0,
+  "svr_epsilon": 0.01,
+  "gamma": "scale"
+}
