@@ -68,7 +68,7 @@ LSTM-SSE-t-Student: L = (1−λ)·MSE + λ·NLL_Student-t
 
 ```
 outputs/
-├── tables/    # Tables 3-9, 4e, A1-A4  (.csv  .tex  .docx)
+├── tables/    # Tables with results
 ├── figures/   # lambda_sensitivity.pdf, trainval_*.pdf, gate_dynamics_*.pdf
 └── models/    # per-model, per-series: sigma2_test.npy + params + weights
 logs/
