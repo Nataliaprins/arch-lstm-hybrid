@@ -6,7 +6,7 @@
   "n_train": 3443,
   "n_val": 430,
   "n_test": 431,
-  "mu_train": 0.1376429974260901,
+  "mu_train": 0.13764299742609007,
   "train_var_eps": 13.777259908976573,
   "split_dates": {
     "train_start": "2014-09-18",

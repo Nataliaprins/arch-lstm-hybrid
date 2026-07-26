@@ -1,0 +1,214 @@
+.venv/bin/python -m src.data.build_dataset --config config/config.yaml
+2026-07-25 19:33:30 [INFO] [BTC-USD] Cargado desde caché (BTC-USD.csv): 4305 filas (2014-09-17 → 2026-06-30)
+2026-07-25 19:33:30 [INFO] [BTC-USD] n=4304  train=3443 (→2024-02-20)  val=430  test=431  μ_train=0.1376  σ²_ε=13.7773
+2026-07-25 19:33:30 [INFO] [ETH-USD] Cargado desde caché (ETH-USD.csv): 3156 filas (2017-11-09 → 2026-06-30)
+2026-07-25 19:33:30 [INFO] [ETH-USD] n=3155  train=2524 (→2024-10-07)  val=315  test=316  μ_train=0.0801  σ²_ε=21.7328
+2026-07-25 19:33:30 [INFO] [^DJI] Cargado desde caché (DJI.csv): 2787 filas (2015-06-01 → 2026-06-30)
+2026-07-25 19:33:30 [INFO] [DJIA] n=2786  train=2228 (→2024-04-08)  val=279  test=279  μ_train=0.0345  σ²_ε=1.3095
+2026-07-25 19:33:30 [INFO] [^GSPC] Cargado desde caché (GSPC.csv): 2787 filas (2015-06-01 → 2026-06-30)
+2026-07-25 19:33:30 [INFO] [SP500] n=2786  train=2228 (→2024-04-08)  val=279  test=279  μ_train=0.0405  σ²_ε=1.3486
+2026-07-25 19:33:30 [INFO] ── Resumen dataset ─────────────────────────────────────────────
+2026-07-25 19:33:30 [INFO] Serie          Total   Train     Val    Test  μ_train     σ²_ε
+2026-07-25 19:33:30 [INFO] BTC-USD         4304    3443     430     431   0.1376  13.7773
+2026-07-25 19:33:30 [INFO] ETH-USD         3155    2524     315     316   0.0801  21.7328
+2026-07-25 19:33:30 [INFO] DJIA            2786    2228     279     279   0.0345   1.3095
+2026-07-25 19:33:30 [INFO] SP500           2786    2228     279     279   0.0405   1.3486
+2026-07-25 19:33:30 [INFO] Dataset summary guardado en data/processed/dataset_summary.json
+.venv/bin/python -m src.models.run_econometric --config config/config.yaml
+2026-07-25 19:33:31 [INFO] ══ Series: BTC-USD ════════════════════════════════════════
+2026-07-25 19:33:31 [INFO] ── BTC-USD / ARCH(1) ──
+2026-07-25 19:33:33 [INFO] [ARCH(1)] conv=True  LL=-8799.37  ω=23.29185  α=1.0000  ν=2.27  (0.7s)
+2026-07-25 19:33:33 [INFO]    → saved  MSE_OOS=818.916849  fit=1.9s  pred=0.01s
+2026-07-25 19:33:33 [INFO] ── BTC-USD / GARCH(1,1) ──
+2026-07-25 19:33:33 [INFO] [GARCH(1,1)] conv=True  LL=-8616.42  ω=0.16002  α=0.1065  β=0.8935  (α+β=1.0000)  ν=3.17
+2026-07-25 19:33:33 [WARNING] [GARCH(1,1)] α+β=1.000000 ≥ 1 — process is NOT covariance-stationary!
+2026-07-25 19:33:33 [INFO]    → saved  MSE_OOS=215.268295  fit=0.4s  pred=0.00s
+2026-07-25 19:33:33 [INFO] ── BTC-USD / EGARCH(1,1) ──
+2026-07-25 19:33:34 [INFO] [EGARCH(1,1)] conv=True  LL=-8589.62  ω=0.09714  α=0.2729  γ=nan  β=0.9876  ν=2.63
+2026-07-25 19:33:34 [INFO]    → saved  MSE_OOS=243.672298  fit=0.3s  pred=0.00s
+2026-07-25 19:33:34 [INFO] ── BTC-USD / GJR-GARCH(1,1) ──
+2026-07-25 19:33:34 [INFO] [GJR-GARCH(1,1)] conv=True  LL=-8613.71  ω=0.12557  α=0.1159  γ=-0.0379  β=0.9030  ν=3.20
+2026-07-25 19:33:34 [INFO]    → saved  MSE_OOS=216.626254  fit=0.3s  pred=0.00s
+2026-07-25 19:33:34 [INFO] ── BTC-USD / FIGARCH(1,d,1) ──
+2026-07-25 19:33:37 [INFO] [FIGARCH(1,d,1)] conv=True  LL=-8615.99  d=0.7184850795339615  (3.3s)
+2026-07-25 19:33:37 [INFO]    → saved  MSE_OOS=213.122449  fit=3.3s  pred=0.01s
+2026-07-25 19:33:37 [INFO] ── BTC-USD / HAR ──
+2026-07-25 19:33:37 [INFO] [HAR] OLS fit  R²=0.0274  β_d=0.0855  β_w=0.0754  β_m=0.2789  (0.0s)
+2026-07-25 19:33:37 [INFO]    → saved  MSE_OOS=225.180161  fit=0.2s  pred=0.01s
+2026-07-25 19:33:37 [INFO] ══ Series: ETH-USD ════════════════════════════════════════
+2026-07-25 19:33:37 [INFO] ── ETH-USD / ARCH(1) ──
+2026-07-25 19:33:38 [INFO] [ARCH(1)] conv=True  LL=-7139.84  ω=21.63688  α=0.3411  ν=2.85  (0.2s)
+2026-07-25 19:33:38 [INFO]    → saved  MSE_OOS=947.692007  fit=0.2s  pred=0.00s
+2026-07-25 19:33:38 [INFO] ── ETH-USD / GARCH(1,1) ──
+2026-07-25 19:33:38 [INFO] [GARCH(1,1)] conv=True  LL=-7050.73  ω=0.39012  α=0.1000  β=0.9000  (α+β=1.0000)  ν=3.35
+2026-07-25 19:33:38 [WARNING] [GARCH(1,1)] α+β=1.000000 ≥ 1 — process is NOT covariance-stationary!
+2026-07-25 19:33:38 [INFO]    → saved  MSE_OOS=790.358393  fit=0.2s  pred=0.00s
+2026-07-25 19:33:38 [INFO] ── ETH-USD / EGARCH(1,1) ──
+2026-07-25 19:33:38 [INFO] [EGARCH(1,1)] conv=True  LL=-7037.85  ω=0.07621  α=0.1903  γ=nan  β=0.9834  ν=3.29
+2026-07-25 19:33:38 [INFO]    → saved  MSE_OOS=785.882552  fit=0.2s  pred=0.00s
+2026-07-25 19:33:38 [INFO] ── ETH-USD / GJR-GARCH(1,1) ──
+2026-07-25 19:33:38 [INFO] [GJR-GARCH(1,1)] conv=True  LL=-7050.62  ω=0.36444  α=0.1018  γ=-0.0101  β=0.9032  ν=3.37
+2026-07-25 19:33:38 [INFO]    → saved  MSE_OOS=790.260573  fit=0.2s  pred=0.00s
+2026-07-25 19:33:38 [INFO] ── ETH-USD / FIGARCH(1,d,1) ──
+2026-07-25 19:33:40 [INFO] [FIGARCH(1,d,1)] conv=True  LL=-7044.30  d=0.45410534907359906  (2.1s)
+2026-07-25 19:33:40 [INFO]    → saved  MSE_OOS=758.478275  fit=2.1s  pred=0.01s
+2026-07-25 19:33:40 [INFO] ── ETH-USD / HAR ──
+2026-07-25 19:33:40 [INFO] [HAR] OLS fit  R²=0.0228  β_d=0.0408  β_w=0.1712  β_m=0.1895  (0.0s)
+2026-07-25 19:33:40 [INFO]    → saved  MSE_OOS=772.910980  fit=0.0s  pred=0.00s
+2026-07-25 19:33:40 [INFO] ══ Series: DJIA ════════════════════════════════════════
+2026-07-25 19:33:40 [INFO] ── DJIA / ARCH(1) ──
+2026-07-25 19:33:41 [INFO] [ARCH(1)] conv=True  LL=-2895.42  ω=0.70822  α=0.5764  ν=3.30  (0.2s)
+2026-07-25 19:33:41 [INFO]    → saved  MSE_OOS=1.526739  fit=0.2s  pred=0.00s
+2026-07-25 19:33:41 [INFO] ── DJIA / GARCH(1,1) ──
+2026-07-25 19:33:41 [INFO] [GARCH(1,1)] conv=True  LL=-2727.07  ω=0.02194  α=0.1686  β=0.8235  (α+β=0.9922)  ν=5.53
+2026-07-25 19:33:41 [INFO]    → saved  MSE_OOS=1.101938  fit=0.1s  pred=0.00s
+2026-07-25 19:33:41 [INFO] ── DJIA / EGARCH(1,1) ──
+2026-07-25 19:33:41 [INFO] [EGARCH(1,1)] conv=True  LL=-2731.71  ω=0.00974  α=0.3121  γ=nan  β=0.9716  ν=5.44
+2026-07-25 19:33:41 [INFO]    → saved  MSE_OOS=1.104361  fit=0.2s  pred=0.00s
+2026-07-25 19:33:41 [INFO] ── DJIA / GJR-GARCH(1,1) ──
+2026-07-25 19:33:41 [INFO] [GJR-GARCH(1,1)] conv=True  LL=-2699.49  ω=0.02257  α=0.0280  γ=0.2136  β=0.8453  ν=5.83
+2026-07-25 19:33:41 [INFO]    → saved  MSE_OOS=1.035417  fit=0.2s  pred=0.00s
+2026-07-25 19:33:41 [INFO] ── DJIA / FIGARCH(1,d,1) ──
+2026-07-25 19:33:43 [INFO] [FIGARCH(1,d,1)] conv=True  LL=-2719.83  d=0.5309062904527868  (1.9s)
+2026-07-25 19:33:43 [INFO]    → saved  MSE_OOS=1.096949  fit=1.9s  pred=0.01s
+2026-07-25 19:33:43 [INFO] ── DJIA / HAR ──
+2026-07-25 19:33:43 [INFO] [HAR] OLS fit  R²=0.2794  β_d=0.1366  β_w=0.5235  β_m=0.0868  (0.0s)
+2026-07-25 19:33:43 [INFO]    → saved  MSE_OOS=1.133247  fit=0.0s  pred=0.00s
+2026-07-25 19:33:43 [INFO] [DJIA] No anomaly: ARCH MSE=1.526739  GARCH MSE=1.101938
+2026-07-25 19:33:43 [INFO] ══ Series: SP500 ════════════════════════════════════════
+2026-07-25 19:33:43 [INFO] ── SP500 / ARCH(1) ──
+2026-07-25 19:33:43 [INFO] [ARCH(1)] conv=True  LL=-3013.82  ω=0.74835  α=0.6340  ν=3.36  (0.1s)
+2026-07-25 19:33:43 [INFO]    → saved  MSE_OOS=2.007399  fit=0.1s  pred=0.00s
+2026-07-25 19:33:43 [INFO] ── SP500 / GARCH(1,1) ──
+2026-07-25 19:33:43 [INFO] [GARCH(1,1)] conv=True  LL=-2813.11  ω=0.01791  α=0.1703  β=0.8297  (α+β=1.0000)  ν=5.61
+2026-07-25 19:33:43 [WARNING] [GARCH(1,1)] α+β=1.000000 ≥ 1 — process is NOT covariance-stationary!
+2026-07-25 19:33:43 [INFO]    → saved  MSE_OOS=1.326760  fit=0.2s  pred=0.00s
+2026-07-25 19:33:43 [INFO] ── SP500 / EGARCH(1,1) ──
+2026-07-25 19:33:43 [INFO] [EGARCH(1,1)] conv=True  LL=-2818.74  ω=0.01264  α=0.3202  γ=nan  β=0.9736  ν=5.47
+2026-07-25 19:33:43 [INFO]    → saved  MSE_OOS=1.331805  fit=0.1s  pred=0.00s
+2026-07-25 19:33:43 [INFO] ── SP500 / GJR-GARCH(1,1) ──
+2026-07-25 19:33:44 [INFO] [GJR-GARCH(1,1)] conv=True  LL=-2781.98  ω=0.02284  α=0.0228  γ=0.2627  β=0.8339  ν=5.73
+2026-07-25 19:33:44 [INFO]    → saved  MSE_OOS=1.279245  fit=0.2s  pred=0.00s
+2026-07-25 19:33:44 [INFO] ── SP500 / FIGARCH(1,d,1) ──
+2026-07-25 19:33:46 [INFO] [FIGARCH(1,d,1)] conv=True  LL=-2806.47  d=0.5547760523534417  (1.9s)
+2026-07-25 19:33:46 [INFO]    → saved  MSE_OOS=1.304342  fit=1.9s  pred=0.01s
+2026-07-25 19:33:46 [INFO] ── SP500 / HAR ──
+2026-07-25 19:33:46 [INFO] [HAR] OLS fit  R²=0.3050  β_d=0.2130  β_w=0.4617  β_m=0.0831  (0.0s)
+2026-07-25 19:33:46 [INFO]    → saved  MSE_OOS=1.402379  fit=0.0s  pred=0.00s
+2026-07-25 19:33:46 [INFO] ══ run_econometric complete ══════════════════════════════════════
+WARN: Rscript no está disponible; se omite MSGARCH y continúo.
+.venv/bin/python -m src.tuning.tune_and_train  --config config/config.yaml
+2026-07-25 19:33:47.059969: I external/local_xla/xla/tsl/cuda/cudart_stub.cc:32] Could not find cuda drivers on your machine, GPU will not be used.
+2026-07-25 19:33:47.064477: I external/local_xla/xla/tsl/cuda/cudart_stub.cc:32] Could not find cuda drivers on your machine, GPU will not be used.
+2026-07-25 19:33:47.077205: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:485] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2026-07-25 19:33:47.095730: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:8454] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2026-07-25 19:33:47.101038: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1452] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2026-07-25 19:33:47.116611: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2026-07-25 19:33:48.189677: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+2026-07-25 19:33:49 [INFO] ══ Series: BTC-USD ════════════════════════════════════════
+2026-07-25 19:33:49 [INFO] ── BTC-USD / SVR-GARCH ──
+2026-07-25 19:33:51 [INFO]   [SVR-GARCH] done  fit=1.9s
+2026-07-25 19:33:51 [INFO] ── BTC-USD / LSTM-SSE ──
+2026-07-25 19:33:51 [INFO]   [lstm_sse] random search (50 trials) …
+2026-07-25 19:49:45 [INFO]   Best hp: {'lstm_units': 16, 'dropout': 0.3, 'batch_size': 64, 'learning_rate': 0.0005, 'window_size': 22}  (val_loss=266.022980)
+2026-07-25 19:49:45 [INFO]   [lstm_sse] multi-seed training (S=10) …
+2026-07-25 19:49:45 [INFO]     seed 01 / 10 …
+2026-07-25 19:49:59 [INFO]     seed 02 / 10 …
+2026-07-25 19:50:14 [INFO]     seed 03 / 10 …
+2026-07-25 19:50:27 [INFO]     seed 04 / 10 …
+2026-07-25 19:50:41 [INFO]     seed 05 / 10 …
+2026-07-25 19:50:56 [INFO]     seed 06 / 10 …
+2026-07-25 19:51:10 [INFO]     seed 07 / 10 …
+2026-07-25 19:51:24 [INFO]     seed 08 / 10 …
+2026-07-25 19:51:39 [INFO]     seed 09 / 10 …
+2026-07-25 19:51:55 [INFO]     seed 10 / 10 …
+2026-07-25 19:52:14 [ERROR] [BTC-USD/LSTM-SSE] failed: 'train_loss'
+Traceback (most recent call last):
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 572, in run
+    _run_model_series(
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 419, in _run_model_series
+    n_params_approx = sum(
+                      ^^^^
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 420, in <genexpr>
+    np.prod(h["train_loss"].__class__.__mro__ or [1]) for h in [{}]
+            ~^^^^^^^^^^^^^^
+KeyError: 'train_loss'
+2026-07-25 19:52:14 [INFO] ── BTC-USD / NN-GARCH ──
+2026-07-25 19:52:14 [INFO]   [nn_garch] random search (50 trials) …
+2026-07-25 20:05:52 [INFO]   Best hp: {'lstm_units': 64, 'dropout': 0.2, 'batch_size': 32, 'learning_rate': 0.0005, 'window_size': 22}  (val_loss=242.291260)
+2026-07-25 20:05:52 [INFO]   [nn_garch] multi-seed training (S=10) …
+2026-07-25 20:05:52 [INFO]     seed 01 / 10 …
+2026-07-25 20:06:30 [INFO]     seed 02 / 10 …
+2026-07-25 20:07:21 [INFO]     seed 03 / 10 …
+2026-07-25 20:07:57 [INFO]     seed 04 / 10 …
+2026-07-25 20:08:30 [INFO]     seed 05 / 10 …
+2026-07-25 20:08:53 [INFO]     seed 06 / 10 …
+2026-07-25 20:09:22 [INFO]     seed 07 / 10 …
+2026-07-25 20:09:55 [INFO]     seed 08 / 10 …
+2026-07-25 20:10:32 [INFO]     seed 09 / 10 …
+2026-07-25 20:11:14 [INFO]     seed 10 / 10 …
+2026-07-25 20:11:30 [ERROR] [BTC-USD/NN-GARCH] failed: 'train_loss'
+Traceback (most recent call last):
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 572, in run
+    _run_model_series(
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 419, in _run_model_series
+    n_params_approx = sum(
+                      ^^^^
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 420, in <genexpr>
+    np.prod(h["train_loss"].__class__.__mro__ or [1]) for h in [{}]
+            ~^^^^^^^^^^^^^^
+KeyError: 'train_loss'
+2026-07-25 20:11:30 [INFO] ── BTC-USD / CNN-LSTM ──
+2026-07-25 20:11:30 [INFO]   [cnn_lstm] random search (50 trials) …
+2026-07-25 20:39:04 [INFO]   Best hp: {'lstm_units': 128, 'dropout': 0.1, 'batch_size': 32, 'learning_rate': 0.0005, 'window_size': 22}  (val_loss=259.950317)
+2026-07-25 20:39:04 [INFO]   [cnn_lstm] multi-seed training (S=10) …
+2026-07-25 20:39:04 [INFO]     seed 01 / 10 …
+2026-07-25 20:41:03 [INFO]     seed 02 / 10 …
+2026-07-25 20:59:51 [INFO]     seed 03 / 10 …
+2026-07-25 21:18:12 [INFO]     seed 04 / 10 …
+2026-07-25 21:33:40 [INFO]     seed 05 / 10 …
+2026-07-25 21:52:43 [INFO]     seed 06 / 10 …
+2026-07-25 22:11:28 [INFO]     seed 07 / 10 …
+2026-07-25 22:37:00 [INFO]     seed 08 / 10 …
+2026-07-25 22:53:11 [INFO]     seed 09 / 10 …
+2026-07-25 22:55:25 [INFO]     seed 10 / 10 …
+2026-07-25 23:18:18 [ERROR] [BTC-USD/CNN-LSTM] failed: 'train_loss'
+Traceback (most recent call last):
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 572, in run
+    _run_model_series(
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 419, in _run_model_series
+    n_params_approx = sum(
+                      ^^^^
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 420, in <genexpr>
+    np.prod(h["train_loss"].__class__.__mro__ or [1]) for h in [{}]
+            ~^^^^^^^^^^^^^^
+KeyError: 'train_loss'
+2026-07-25 23:18:18 [INFO] ── BTC-USD / LSTM-Attention ──
+2026-07-25 23:18:18 [INFO]   [lstm_attention] random search (50 trials) …
+2026-07-25 23:36:18 [INFO]   Best hp: {'lstm_units': 16, 'dropout': 0.1, 'batch_size': 128, 'learning_rate': 0.001, 'window_size': 22}  (val_loss=265.886047)
+2026-07-25 23:36:18 [INFO]   [lstm_attention] multi-seed training (S=10) …
+2026-07-25 23:36:18 [INFO]     seed 01 / 10 …
+2026-07-25 23:36:34 [INFO]     seed 02 / 10 …
+2026-07-25 23:36:50 [INFO]     seed 03 / 10 …
+2026-07-25 23:37:05 [INFO]     seed 04 / 10 …
+2026-07-25 23:37:21 [INFO]     seed 05 / 10 …
+2026-07-25 23:37:35 [INFO]     seed 06 / 10 …
+2026-07-25 23:37:50 [INFO]     seed 07 / 10 …
+2026-07-25 23:38:06 [INFO]     seed 08 / 10 …
+2026-07-25 23:38:21 [INFO]     seed 09 / 10 …
+2026-07-25 23:38:36 [INFO]     seed 10 / 10 …
+2026-07-25 23:38:51 [ERROR] [BTC-USD/LSTM-Attention] failed: 'train_loss'
+Traceback (most recent call last):
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 572, in run
+    _run_model_series(
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 419, in _run_model_series
+    n_params_approx = sum(
+                      ^^^^
+  File "/workspaces/arch-lstm-hybrid/src/tuning/tune_and_train.py", line 420, in <genexpr>
+    np.prod(h["train_loss"].__class__.__mro__ or [1]) for h in [{}]
+            ~^^^^^^^^^^^^^^
+KeyError: 'train_loss'
+2026-07-25 23:38:51 [INFO] ── BTC-USD / TCN ──
+2026-07-25 23:38:51 [INFO]   [tcn] random search (50 trials) …
+make: *** [Makefile:28: models] Terminated

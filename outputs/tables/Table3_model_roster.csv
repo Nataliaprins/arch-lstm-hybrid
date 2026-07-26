@@ -1,0 +1,16 @@
+Model,Panel,Family,Specification,Package,Role
+ARCH(1),Panel A,Econometric,ARCH(1)-t,arch (Python),Benchmark
+"GARCH(1,1)",Panel A,Econometric,"GARCH(1,1)-t",arch (Python),Reference benchmark
+"EGARCH(1,1)",Panel A,Econometric,"EGARCH(1,1)-t",arch (Python),Leverage effect
+"GJR-GARCH(1,1)",Panel A,Econometric,"GJR-GARCH(1,1)-t",arch (Python),Threshold asymmetry
+"FIGARCH(1,d,1)",Panel A,Econometric,"FIGARCH(1,d,1)-t",arch (Python),Long memory
+"MSGARCH(1,1)",Panel A,Econometric,Markov-switching (2 states),MSGARCH (R),Markov-switching (rev. req.)
+HAR,Panel A,Econometric,HAR-RV (OLS+HAC),statsmodels,Heterogeneous volatility
+SVR-GARCH,Panel B,ML,SVR-RBF on ε² window,scikit-learn,ML baseline
+NN-GARCH,Panel B,DL,Dense net + GARCH prior,Keras/TF,Neural GARCH augmentation (rev. req.)
+LSTM-SSE,Panel B,DL,LSTM + MSE loss,Keras/TF,Architecture ablation
+CNN-LSTM,Panel B,DL,Conv1D + LSTM,Keras/TF,DL baseline
+LSTM-Attention,Panel B,DL,LSTM + Bahdanau attn,Keras/TF,DL baseline
+TCN,Panel B,DL,Dilated causal Conv,Keras/TF,DL baseline
+Transformer,Panel B,DL,Encoder-only transformer,Keras/TF,DL baseline
+LSTM-SSE-t-Student,Panel C,DL (proposed),LSTM + (1−λ)·MSE + λ·NLL_t,Keras/TF,Proposed model

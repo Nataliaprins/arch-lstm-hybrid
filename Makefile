@@ -3,7 +3,8 @@
 
 PYTHON := .venv/bin/python
 SRC    := src
-STAMPS := .stamps            # marcadores de etapa completada
+# Marcadores de etapa completada.
+STAMPS := .stamps
 
 .PHONY: all data models eval tables figures test clean help
 .DEFAULT_GOAL := help
@@ -21,25 +22,29 @@ data: | $(STAMPS)
 	@touch $(STAMPS)/data
 
 ## models: estima/entrena los tres paneles (econométricos, ML/DL, propuesto)
-models: $(STAMPS)/data
+models: data
 	$(PYTHON) -m $(SRC).models.run_econometric --config config/config.yaml
-	Rscript R/msgarch.R config/config.yaml || (echo "ERROR: MSGARCH (R) falló — ver logs/msgarch_error.log" | tee -a logs/msgarch_error.log; exit 1)
+	@if command -v Rscript >/dev/null 2>&1; then \
+		Rscript R/msgarch.R config/config.yaml || echo "WARN: MSGARCH (R) falló; continúo con el resto del pipeline."; \
+	else \
+		echo "WARN: Rscript no está disponible; se omite MSGARCH y continúo."; \
+	fi
 	$(PYTHON) -m $(SRC).tuning.tune_and_train  --config config/config.yaml
 	@touch $(STAMPS)/models
 
 ## eval: métricas OOS, DM+Holm, MCS, bootstrap, VaR/ES, sensibilidad de λ
-eval: $(STAMPS)/models
+eval: models
 	$(PYTHON) -m $(SRC).eval.run_all_metrics   --config config/config.yaml
 	@touch $(STAMPS)/eval
 
 ## tables: emite Tablas 3–9 y 4+A1–A4 en .csv, .tex y .docx
-tables: $(STAMPS)/eval
+tables: eval
 	$(PYTHON) -m $(SRC).reporting.build_tables --config config/config.yaml
 	@echo ">> Tablas en outputs/tables/ (csv, tex, docx)."
 	@touch $(STAMPS)/tables
 
 ## figures: sensibilidad de λ, curvas train/val, dinámicas de compuertas
-figures: $(STAMPS)/tables
+figures: tables
 	$(PYTHON) -m $(SRC).reporting.build_figures --config config/config.yaml
 	@touch $(STAMPS)/figures
 

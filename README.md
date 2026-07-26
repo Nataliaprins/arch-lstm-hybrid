@@ -85,7 +85,7 @@ Python 3.11.6 · TensorFlow 2.17.0 · arch 7.0.0 · scikit-learn 1.5.1
 See `requirements.txt` for exact pinned versions.
 
 R ≥ 4.2 required only for MSGARCH. If R/MSGARCH is not available, the `models`
-step fails visibly and logs the error; all other models proceed normally.
+step skips MSGARCH with a warning; all other models proceed normally.
 
 ---
 
