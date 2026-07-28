@@ -37,12 +37,15 @@ split:
 seed: 42        # semilla base; derivar S semillas como seed + i
 n_seeds: 10     # S = 10 semillas para modelos neuronales
 
-window_size: 22 # longitud de la ventana de entrada para redes (≈ 1 mes bursátil)
-
 returns_scale: 100   # escalar 100×log-ret → puntos porcentuales
 
-# ── Escalado de entrada de las redes (Sección 4 respecificación) ──
+# ── Datos: ventana de entrada única y escalado (Secciones 4-5 respecificación) ──
+# data.window es la ÚNICA fuente de la longitud de ventana: aplica a las
+# cuatro series y a todos los modelos neuronales. No debe existir ningún
+# override por mercado ni por modelo (ver _get_window_size en tune_and_train.py,
+# que aborta la ejecución si detecta uno).
 data:
+  window: 22   # ≈ 1 mes bursátil
   input_scaling: unconditional   # unconditional: eps2_t/sigma2_train | log1p: log1p(eps2_t)
 
 # ── Espacio de búsqueda de hiperparámetros (compartido por todos los modelos DL) ──

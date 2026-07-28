@@ -146,6 +146,48 @@ def _derive_seeds(base_seed: int, n: int) -> list[int]:
     return rng.integers(0, 2**31, size=n).tolist()
 
 
+def _get_window_size(cfg: dict) -> int:
+    """
+    Single project-wide input window (Section 5 respecification):
+    data.window, applied identically to every series and every neural
+    model. A per-market or per-model override would silently make
+    Proposition 2 impossible to instantiate consistently across series,
+    so this aborts loudly instead of applying one.
+    """
+    if "window_size" in cfg:
+        raise ValueError(
+            "Legacy top-level 'window_size' key found in config. The single "
+            "project-wide window now lives at data.window (Section 5) -- "
+            "remove 'window_size' from the config."
+        )
+
+    data_cfg = cfg.get("data", {})
+    if "window" not in data_cfg:
+        raise ValueError("config is missing data.window (Section 5 respecification).")
+    window = int(data_cfg["window"])
+
+    for series_cfg in cfg.get("series", []):
+        for key in ("window", "window_size"):
+            if key in series_cfg:
+                raise ValueError(
+                    f"Per-market window override detected for series "
+                    f"'{series_cfg.get('name', '?')}' ({key}={series_cfg[key]!r}). "
+                    "Section 5 requires a single data.window applied to all "
+                    "series and all models -- remove the per-series override."
+                )
+
+    hp_search = cfg.get("hyperparameter_search", {})
+    for key in ("window", "window_size", "window_values"):
+        if key in hp_search:
+            raise ValueError(
+                f"hyperparameter_search.{key} would make the window part of "
+                "a per-model search space, which Section 5 forbids -- remove "
+                "it; the window comes only from data.window."
+            )
+
+    return window
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Hybrid-loss normalization scales (Section 2 respecification)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -404,7 +446,7 @@ def _run_model_series(
     loss_scales: dict | None = None,
 ) -> None:
     """End-to-end train/tune/predict for one model × series."""
-    W          = cfg["window_size"]
+    W          = _get_window_size(cfg)
     ss         = cfg["hyperparameter_search"]
     n_trials   = ss["n_trials"]
     patience   = ss["patience"]
@@ -562,7 +604,7 @@ def _lambda_sensitivity(
     from src.losses.hybrid_student_t import hybrid_loss_numpy
 
     lambdas    = cfg.get("lambda_sensitivity", [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0])
-    W          = cfg["window_size"]
+    W          = _get_window_size(cfg)
     ss         = cfg["hyperparameter_search"]
     patience   = ss["patience"]
     max_epochs = min(ss["max_epochs"], 300)
