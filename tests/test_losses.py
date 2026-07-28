@@ -9,6 +9,8 @@ from src.losses.hybrid_student_t import (
     student_t_nll_per_obs,
     student_t_ll_total,
     make_hybrid_loss,
+    make_variance_mse_loss,
+    sigma2_from_log_var,
     compute_loss_scales,
     effective_lambda,
 )
@@ -48,15 +50,56 @@ def test_ll_total_negative_for_reasonable_inputs():
 
 
 def test_keras_loss_matches_numpy():
-    """Keras hybrid loss ≈ NumPy version (λ=0.5, ν=4)."""
+    """
+    Keras hybrid loss ≈ NumPy version (λ=0.5, ν=4). Section 3: the Keras
+    loss's y_pred is u_t = log σ̂²_t (raw model output, no activation), so
+    we feed log(SIGMA2) and compare against hybrid_loss_numpy(..., SIGMA2).
+    """
     import tensorflow as tf
     lam, nu = 0.5, 4
     keras_fn = make_hybrid_loss(nu=nu, lam=lam)
     y_true = tf.constant(EPS2[:20], dtype=tf.float32)
-    y_pred = tf.constant(SIGMA2[:20], dtype=tf.float32)
-    k_loss = float(keras_fn(y_true, y_pred).numpy())
+    u_pred = tf.constant(np.log(SIGMA2[:20]), dtype=tf.float32)
+    k_loss = float(keras_fn(y_true, u_pred).numpy())
     n_loss = hybrid_loss_numpy(EPS2[:20], SIGMA2[:20], nu=nu, lam=lam)
     assert abs(k_loss - n_loss) < 1e-4, f"Keras={k_loss}  NumPy={n_loss}"
+
+
+def test_variance_mse_loss_matches_numpy():
+    """make_variance_mse_loss(u_t) ≈ MSE(exp(u_t), eps2) in NumPy."""
+    import tensorflow as tf
+    keras_fn = make_variance_mse_loss()
+    u_pred = tf.constant(np.log(SIGMA2), dtype=tf.float32)
+    y_true = tf.constant(EPS2, dtype=tf.float32)
+    k_loss = float(keras_fn(y_true, u_pred).numpy())
+    n_loss = float(np.mean((SIGMA2 - EPS2) ** 2))
+    assert abs(k_loss - n_loss) < 1e-3, f"Keras={k_loss}  NumPy={n_loss}"
+
+
+def test_sigma2_from_log_var_roundtrip():
+    """sigma2_from_log_var(log(sigma2)) recovers sigma2 within clip range."""
+    u = np.log(SIGMA2)
+    recovered = sigma2_from_log_var(u)
+    assert np.allclose(recovered, SIGMA2, rtol=1e-5)
+
+
+def test_sigma2_from_log_var_clips_extremes():
+    """Extreme u_t (as could arise early in training) must not overflow/vanish."""
+    u = np.array([-1e6, 1e6, 0.0])
+    sigma2 = sigma2_from_log_var(u)
+    assert np.all(np.isfinite(sigma2))
+    assert sigma2[0] > 0.0
+    assert sigma2[1] < np.inf
+
+
+def test_hybrid_loss_finite_for_extreme_log_var():
+    """The Keras hybrid loss must stay finite even for wild u_t (pre-clip)."""
+    import tensorflow as tf
+    keras_fn = make_hybrid_loss(nu=5, lam=0.5)
+    y_true = tf.constant(EPS2[:10], dtype=tf.float32)
+    u_pred = tf.constant([1e6, -1e6, 30.0, -30.0, 0.0] * 2, dtype=tf.float32)
+    loss = float(keras_fn(y_true, u_pred).numpy())
+    assert np.isfinite(loss)
 
 
 def test_positivity_floor():

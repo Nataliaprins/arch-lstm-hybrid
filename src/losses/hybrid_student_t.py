@@ -39,6 +39,9 @@ import numpy as np
 # Keras / TensorFlow loss (used during training)
 # ══════════════════════════════════════════════════════════════════════════════
 
+_LOG_VAR_CLIP = 20.0  # clip(u_t, -20, 20) before exp() — Section 3 respecification
+
+
 def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
     """
     Factory that returns a Keras-compatible loss function.
@@ -58,7 +61,11 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
     -------
     loss_fn(y_true, y_pred) callable
         y_true : ε²_t  (proxy of realized variance)
-        y_pred : σ²_t  (model output — MUST be positive)
+        y_pred : u_t = log σ̂²_t  (raw, unclipped model output — the model's
+                 output layer has NO activation; σ̂²_t is derived here as
+                 exp(clip(u_t, -20, 20)), and the clipped u_t is reused
+                 directly as log σ̂²_t rather than recomputed via
+                 log(exp(u_t)))
     """
     import tensorflow as tf
 
@@ -69,14 +76,16 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
     s_t_val   = float(s_t)
 
     def _loss(y_true, y_pred):
-        eps2   = tf.cast(y_true, tf.float32)
-        sigma2 = tf.cast(y_pred, tf.float32) + 1e-8  # numerical floor
+        eps2 = tf.cast(y_true, tf.float32)
+        u_c  = tf.clip_by_value(tf.cast(y_pred, tf.float32),
+                                 -_LOG_VAR_CLIP, _LOG_VAR_CLIP)
+        sigma2 = tf.exp(u_c)
 
         # ── L_SSE (MSE component) ────────────────────────────────────────────
         L_sse = tf.reduce_mean(tf.square(sigma2 - eps2))
 
         # ── L_t  (Student-t NLL component, constants dropped) ───────────────
-        log_s2    = tf.math.log(sigma2)
+        log_s2    = u_c   # log σ̂²_t — reuse the clipped value directly
         ratio     = eps2 / (sigma2 * nu_m2)
         log1p_r   = tf.math.log1p(ratio)
         L_t       = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_val + 1.0) * log1p_r)
@@ -85,6 +94,40 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
 
     _loss.__name__ = f"hybrid_t_nu{int(nu_val)}_lam{lam_val:.1f}"
     return _loss
+
+
+def make_variance_mse_loss():
+    """
+    Keras MSE-on-variance loss for the non-hybrid architectures
+    (LSTM-SSE, CNN-LSTM, LSTM-Attention, TCN, Transformer, NN-GARCH).
+
+    Replaces the plain "mse" string loss now that the output layer emits
+    u_t = log σ̂²_t (no activation) instead of σ̂²_t directly (Section 3):
+    MSE is computed between ε²_t and σ̂²_t = exp(clip(u_t, -20, 20)).
+    """
+    import tensorflow as tf
+
+    def _loss(y_true, y_pred):
+        eps2 = tf.cast(y_true, tf.float32)
+        u_c  = tf.clip_by_value(tf.cast(y_pred, tf.float32),
+                                 -_LOG_VAR_CLIP, _LOG_VAR_CLIP)
+        sigma2 = tf.exp(u_c)
+        return tf.reduce_mean(tf.square(sigma2 - eps2))
+
+    _loss.__name__ = "variance_mse"
+    return _loss
+
+
+def sigma2_from_log_var(u: np.ndarray, clip_val: float = _LOG_VAR_CLIP) -> np.ndarray:
+    """
+    NumPy conversion from a model's raw log-variance output u_t to σ̂²_t:
+    σ̂²_t = exp(clip(u_t, -clip_val, clip_val)).
+
+    Every neural model (Section 3) now outputs u_t; call this once right
+    after `model.predict(...)` to recover the actual variance forecast
+    used everywhere downstream (saved sigma2_test.npy, metrics, tables).
+    """
+    return np.exp(np.clip(np.asarray(u, dtype=float), -clip_val, clip_val))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

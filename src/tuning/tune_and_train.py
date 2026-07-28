@@ -31,6 +31,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.losses.hybrid_student_t import sigma2_from_log_var
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -344,8 +346,9 @@ def _multiseed_train_and_predict(
             X_val, y_val,
             seed=seed, patience=patience, max_epochs=max_epochs,
         )
-        # Predict OOS
-        sigma2_hat = model.predict(X_test_w, verbose=0).ravel()
+        # Predict OOS. Model output is u_t = log sigma2_t (Section 3); convert.
+        u_hat = model.predict(X_test_w, verbose=0).ravel()
+        sigma2_hat = sigma2_from_log_var(u_hat)
         sigma2_per_seed.append(sigma2_hat)
         histories.append(hist)
 
@@ -576,7 +579,8 @@ def _lambda_sensitivity(
                 m.fit(X_tr_f, y_tr_f, validation_data=(X_val, y_val),
                       epochs=max_epochs, batch_size=hp["batch_size"],
                       callbacks=[es], verbose=0, shuffle=False)
-                pred = m.predict(X_test_w, verbose=0).ravel()
+                u_pred = m.predict(X_test_w, verbose=0).ravel()
+                pred = sigma2_from_log_var(u_pred)
                 preds_all.append(pred)
                 tf.keras.backend.clear_session()
             except Exception as exc:

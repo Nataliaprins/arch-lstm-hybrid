@@ -18,24 +18,19 @@ Models implemented
   build_nn_garch          — dense net augmenting the GARCH recursion
   SVRGARCHModel           — scikit-learn SVR (sklearn, not Keras)
 
-All Keras builders share the positivity constraint on the output:
-    σ²_t = softplus(dense_output) + ε_floor
+All Keras builders share the same output reparametrization (Section 3):
+the output layer has NO activation and emits u_t = log σ̂²_t directly.
+σ̂²_t is never computed inside the model graph; it is derived only where
+needed — in the training loss (src.losses.hybrid_student_t.make_hybrid_loss
+/ make_variance_mse_loss) and, at inference time, via
+src.losses.hybrid_student_t.sigma2_from_log_var(model.predict(...)) —
+as exp(clip(u_t, -20, 20)). The previous softplus-on-variance activation
+was poorly conditioned when the target spans multiple orders of magnitude
+(the case for crypto), which this reparametrization avoids.
 """
 from __future__ import annotations
 
 import numpy as np
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Shared utilities
-# ──────────────────────────────────────────────────────────────────────────────
-
-_EPS_FLOOR = 1e-6   # minimum output value for numerical stability
-
-
-def _softplus_output(x):
-    """Softplus activation; keeps output strictly positive."""
-    import tensorflow as tf
-    return tf.nn.softplus(x) + _EPS_FLOOR
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -63,6 +58,7 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
     hp keys used: lstm_units, dropout, learning_rate (optional, default 1e-3)
     """
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     units = hp["lstm_units"]
     drop  = hp.get("dropout", 0.0)
@@ -73,10 +69,10 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
     x     = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
                                   kernel_initializer="glorot_uniform")(inp)
     x     = tf.keras.layers.Dropout(drop)(x)
-    out   = tf.keras.layers.Dense(1, activation=_softplus_output, name="sigma2")(x)
+    out   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="LSTM-SSE")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
@@ -110,7 +106,7 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     x     = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
                                   kernel_initializer="glorot_uniform")(inp)
     x     = tf.keras.layers.Dropout(drop)(x)
-    out   = tf.keras.layers.Dense(1, activation=_softplus_output, name="sigma2")(x)
+    out   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
     model.compile(
@@ -130,6 +126,7 @@ def build_cnn_lstm(hp: dict) -> "tf.keras.Model":
     hp extras: n_filters (default = lstm_units // 2), kernel_size (default 3)
     """
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     units       = hp["lstm_units"]
     drop        = hp.get("dropout", 0.0)
@@ -148,10 +145,10 @@ def build_cnn_lstm(hp: dict) -> "tf.keras.Model":
     x   = tf.keras.layers.LSTM(units, dropout=drop,
                                  kernel_initializer="glorot_uniform")(x)
     x   = tf.keras.layers.Dropout(drop)(x)
-    out = tf.keras.layers.Dense(1, activation=_softplus_output)(x)
+    out = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="CNN-LSTM")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
@@ -162,6 +159,7 @@ def build_cnn_lstm(hp: dict) -> "tf.keras.Model":
 def build_lstm_attention(hp: dict) -> "tf.keras.Model":
     """LSTM with return_sequences=True + additive (Bahdanau-style) attention."""
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     units = hp["lstm_units"]
     drop  = hp.get("dropout", 0.0)
@@ -185,10 +183,10 @@ def build_lstm_attention(hp: dict) -> "tf.keras.Model":
     )(ctx)                                                              # (B, units)
 
     x   = tf.keras.layers.Dropout(drop)(ctx)
-    out = tf.keras.layers.Dense(1, activation=_softplus_output)(x)
+    out = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="LSTM-Attention")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
@@ -225,6 +223,7 @@ def build_tcn(hp: dict) -> "tf.keras.Model":
     Dilations: [1, 2, 4, 8] → RF = 3 × 15 = 45 > 22 for kernel_size=3.
     """
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     units       = hp["lstm_units"]     # reused as n_filters
     drop        = hp.get("dropout", 0.0)
@@ -239,10 +238,10 @@ def build_tcn(hp: dict) -> "tf.keras.Model":
         x = _tcn_residual_block(x, units, kernel_size, d, drop)
 
     x   = tf.keras.layers.GlobalAveragePooling1D()(x)
-    out = tf.keras.layers.Dense(1, activation=_softplus_output)(x)
+    out = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="TCN")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
@@ -268,6 +267,7 @@ def build_transformer(hp: dict) -> "tf.keras.Model":
     hp extras: n_heads (default 2), d_model (default lstm_units), ffn_dim (default 2×d_model)
     """
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     d_model  = hp.get("d_model", hp["lstm_units"])
     n_heads  = hp.get("n_heads", 2)
@@ -301,10 +301,10 @@ def build_transformer(hp: dict) -> "tf.keras.Model":
 
     # Aggregate over time → scalar output
     x   = tf.keras.layers.GlobalAveragePooling1D()(x)
-    out = tf.keras.layers.Dense(1, activation=_softplus_output)(x)
+    out = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="Transformer")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
@@ -321,6 +321,7 @@ def build_nn_garch(hp: dict) -> "tf.keras.Model":
     Input shape: (batch, W, 2)  — channel 0: ε_t, channel 1: σ²_t_garch
     """
     import tensorflow as tf
+    from src.losses.hybrid_student_t import make_variance_mse_loss
 
     units = hp["lstm_units"]   # repurposed as hidden units
     drop  = hp.get("dropout", 0.0)
@@ -333,10 +334,10 @@ def build_nn_garch(hp: dict) -> "tf.keras.Model":
         x = tf.keras.layers.Dense(units, activation="relu",
                                    kernel_initializer="glorot_uniform")(x)
         x = tf.keras.layers.Dropout(drop)(x)
-    out = tf.keras.layers.Dense(1, activation=_softplus_output)(x)
+    out = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
     model = tf.keras.Model(inp, out, name="NN-GARCH")
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss="mse")
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr), loss=make_variance_mse_loss())
     return model
 
 
