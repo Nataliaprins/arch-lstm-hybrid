@@ -248,6 +248,36 @@ def _compute_and_log_loss_scales(
     return scales
 
 
+def _get_model_init_hp(series_name: str, cfg: dict, models_dir: Path, scaler: dict) -> dict | None:
+    """
+    Section 6: if model.init=="garch", load this series' already-estimated
+    GARCH(1,1)-t params and return the hp keys build_lstm_t_student needs
+    to initialize from them. Returns None for the default "glorot" init.
+    """
+    init = cfg.get("model", {}).get("init", "glorot")
+    if init not in ("glorot", "garch"):
+        raise ValueError(f"Unknown model.init={init!r}; expected 'glorot' or 'garch'.")
+    if init != "garch":
+        return None
+
+    if scaler.get("method") != "unconditional":
+        raise ValueError(
+            "model.init='garch' requires data.input_scaling='unconditional' "
+            f"(got {scaler.get('method')!r}) -- the GARCH weight mapping in "
+            "src.models.garch_init assumes x_t = eps2_t / sigma2_train."
+        )
+
+    from src.models.garch_init import load_garch_params
+    params = load_garch_params(series_name, models_dir)
+    return {
+        "init": "garch",
+        "garch_alpha": params["alpha"],
+        "garch_beta": params["beta"],
+        "garch_omega": params["omega"],
+        "garch_sigma2_train": scaler["sigma2_train"],
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Hyperparameter sampling
 # ──────────────────────────────────────────────────────────────────────────────
@@ -258,6 +288,7 @@ def _sample_hp(
     window_size: int,
     model_type: str,
     loss_scales: dict | None = None,
+    garch_init_hp: dict | None = None,
 ) -> dict:
     """Sample one hyperparameter configuration from the search space."""
     hp = {
@@ -274,6 +305,8 @@ def _sample_hp(
         if loss_scales is not None:
             hp["s_sse"] = loss_scales["s_sse"]
             hp["s_t"]   = loss_scales["s_t"]
+        if garch_init_hp is not None:
+            hp.update(garch_init_hp)
     return hp
 
 
@@ -337,6 +370,7 @@ def _random_search(
     model_type: str,
     val_frac: float = 0.15,
     loss_scales: dict | None = None,
+    garch_init_hp: dict | None = None,
 ) -> dict:
     """
     Random search with a single temporal val split.
@@ -354,7 +388,8 @@ def _random_search(
     best_hp       = None
 
     for trial in range(n_trials):
-        hp = _sample_hp(rng, search_space, window_size, model_type, loss_scales=loss_scales)
+        hp = _sample_hp(rng, search_space, window_size, model_type,
+                         loss_scales=loss_scales, garch_init_hp=garch_init_hp)
         seed_t = int(rng.integers(0, 2**31))
         try:
             _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
@@ -372,7 +407,7 @@ def _random_search(
         # Fallback to default
         best_hp = _sample_hp(
             np.random.default_rng(base_seed), search_space, window_size, model_type,
-            loss_scales=loss_scales,
+            loss_scales=loss_scales, garch_init_hp=garch_init_hp,
         )
     log.info("  Best hp: %s  (val_loss=%.6f)", best_hp, best_val_loss)
     return best_hp
@@ -444,6 +479,7 @@ def _run_model_series(
     cfg:        dict,
     out_dir:    Path,
     loss_scales: dict | None = None,
+    garch_init_hp: dict | None = None,
 ) -> None:
     """End-to-end train/tune/predict for one model × series."""
     W          = _get_window_size(cfg)
@@ -540,6 +576,7 @@ def _run_model_series(
         base_seed=base_seed, window_size=W, model_type=model_key,
         val_frac=0.15,
         loss_scales=loss_scales if model_key == "lstm_t_student" else None,
+        garch_init_hp=garch_init_hp if model_key == "lstm_t_student" else None,
     )
     tune_secs = time.perf_counter() - t_tune
 
@@ -752,6 +789,7 @@ def run(config_path: str) -> None:
         loss_scales = _compute_and_log_loss_scales(
             name, data["train_eps2"], cfg, models_dir, logs_dir,
         )
+        garch_init_hp = _get_model_init_hp(name, cfg, models_dir, data["scaler"])
 
         # Load GARCH sigma2_train for NN-GARCH
         garch_dir = models_dir / "GARCH11" / name
@@ -776,6 +814,7 @@ def run(config_path: str) -> None:
                     garch_sigma2_train=garch_sigma2_train,
                     cfg=cfg, out_dir=out_dir,
                     loss_scales=loss_scales,
+                    garch_init_hp=garch_init_hp,
                 )
                 elapsed = round(time.perf_counter() - t0, 2)
                 run_status.append({

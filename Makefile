@@ -23,6 +23,7 @@ data: | $(STAMPS)
 ## models: estima/entrena los tres paneles (econométricos, ML/DL, propuesto)
 models: $(STAMPS)/data
 	$(PYTHON) -m $(SRC).models.run_econometric --config config/config.yaml
+	$(PYTHON) -m $(SRC).models.garch_init      --config config/config.yaml
 	Rscript R/msgarch.R config/config.yaml || (echo "ERROR: MSGARCH (R) falló — ver logs/msgarch_error.log" | tee -a logs/msgarch_error.log; exit 1)
 	$(PYTHON) -m $(SRC).tuning.tune_and_train  --config config/config.yaml
 	@touch $(STAMPS)/models

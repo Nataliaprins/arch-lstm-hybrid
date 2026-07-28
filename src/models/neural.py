@@ -89,11 +89,29 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     s_sse / s_t (frozen normalization scales — see
     src.losses.hybrid_student_t.compute_loss_scales; default 1.0/1.0
     reproduces the un-normalized loss).
+
+    hp["init"] selects the LSTM weight initialization (Section 6):
+      "glorot" (default) — standard Keras init, tanh activation.
+      "garch"  — single-unit LSTM initialized from the GARCH(1,1)-t MLE
+                 solution of this series (src.models.garch_init), with a
+                 linear LSTM activation and a fixed (non-trainable)
+                 initial cell state c0. Requires hp["garch_alpha"],
+                 hp["garch_beta"], hp["garch_omega"],
+                 hp["garch_sigma2_train"] (only valid when
+                 data.input_scaling="unconditional" — see
+                 src.models.garch_init module docstring for the mapping).
+                 hp["lstm_units"] is ignored (forced to 1): a linear
+                 activation has no saturation to bound extra hidden
+                 units, so random-initialized capacity beyond the single
+                 GARCH-tracking unit is numerically unstable over the
+                 window length (verified empirically -- it diverges
+                 within one epoch). Proposition 2's construction is a
+                 single scalar recursion; that is what this reproduces.
     """
+    import numpy as np
     import tensorflow as tf
     from src.losses.hybrid_student_t import make_hybrid_loss
 
-    units = hp["lstm_units"]
     drop  = hp.get("dropout", 0.0)
     lr    = hp.get("learning_rate", 1e-3)
     nu    = hp["nu"]
@@ -101,10 +119,38 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     W     = hp["window_size"]
     s_sse = hp.get("s_sse", 1.0)
     s_t   = hp.get("s_t", 1.0)
+    init  = hp.get("init", "glorot")
+    units = 1 if init == "garch" else hp["lstm_units"]
 
-    inp   = tf.keras.Input(shape=(W, 1), name="eps_window")
-    x     = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
+    inp = tf.keras.Input(shape=(W, 1), name="eps_window")
+
+    if init == "garch":
+        from src.models.garch_init import (
+            garch_lstm_weight_arrays, garch_initial_cell_state,
+            make_constant_initial_state_layer,
+        )
+        alpha = hp["garch_alpha"]
+        beta = hp["garch_beta"]
+        omega = hp["garch_omega"]
+        sigma2_train = hp["garch_sigma2_train"]
+        c0 = garch_initial_cell_state(omega, alpha, beta, sigma2_train)["c0"]
+
+        h0_vec = np.zeros(units, dtype=np.float32)
+        c0_vec = np.full(units, c0, dtype=np.float32)
+        h0 = make_constant_initial_state_layer(h0_vec, name="h0_init")(inp)
+        c0_state = make_constant_initial_state_layer(c0_vec, name="c0_init")(inp)
+
+        lstm_layer = tf.keras.layers.LSTM(
+            units, activation="linear", recurrent_activation="sigmoid",
+            dropout=drop, recurrent_dropout=0.0,
+        )
+        x = lstm_layer(inp, initial_state=[h0, c0_state])
+        w = garch_lstm_weight_arrays(alpha, beta, omega, sigma2_train, units=units)
+        lstm_layer.set_weights([w["kernel"], w["recurrent_kernel"], w["bias"]])
+    else:
+        x = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
                                   kernel_initializer="glorot_uniform")(inp)
+
     x     = tf.keras.layers.Dropout(drop)(x)
     out   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
