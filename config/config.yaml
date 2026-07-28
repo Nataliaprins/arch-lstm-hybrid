@@ -41,6 +41,10 @@ window_size: 22 # longitud de la ventana de entrada para redes (≈ 1 mes bursá
 
 returns_scale: 100   # escalar 100×log-ret → puntos porcentuales
 
+# ── Escalado de entrada de las redes (Sección 4 respecificación) ──
+data:
+  input_scaling: unconditional   # unconditional: eps2_t/sigma2_train | log1p: log1p(eps2_t)
+
 # ── Espacio de búsqueda de hiperparámetros (compartido por todos los modelos DL) ──
 hyperparameter_search:
   lstm_units:    [16, 32, 64, 128]

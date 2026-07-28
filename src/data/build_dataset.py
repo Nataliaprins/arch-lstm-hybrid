@@ -29,6 +29,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.data.scaling import fit_scaler
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -182,6 +184,12 @@ def process_series(
     eps2_test.to_csv( out / "test_eps2.csv",  header=True)
 
     prices.to_csv(out / "prices.csv", header=True)
+
+    # ── Input scaler (Section 4 respecification) — fit on TRAIN only ───────
+    input_scaling_method = cfg.get("data", {}).get("input_scaling", "unconditional")
+    scaler = fit_scaler(eps2_train.values, method=input_scaling_method)
+    with open(out / "scaler.json", "w") as fh:
+        json.dump(scaler, fh, indent=2)
 
     # Estadísticas descriptivas de entrenamiento (usadas para verificar σ² incond.)
     train_var = float(eps_train.var(ddof=1))  # varianza muestral de εₜ en train

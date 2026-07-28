@@ -32,6 +32,7 @@ import pandas as pd
 import yaml
 
 from src.losses.hybrid_student_t import sigma2_from_log_var
+from src.data.scaling import transform as scaling_transform
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,51 +67,76 @@ def _load_series(series_name: str, processed_dir: Path) -> dict:
     def _r(f):
         return pd.read_csv(base / f, index_col=0, parse_dates=True).iloc[:, 0].values.astype(float)
 
+    scaler_path = base / "scaler.json"
+    if not scaler_path.exists():
+        raise FileNotFoundError(
+            f"{scaler_path} not found. Run `python -m src.data.build_dataset "
+            "--config <config>` first so the train-only input scaler "
+            "(Section 4 respecification) is fit and persisted."
+        )
+    with open(scaler_path) as fh:
+        scaler = json.load(fh)
+
+    train_eps2 = _r("train_eps2.csv")
+    val_eps2   = _r("val_eps2.csv")
+    test_eps2  = _r("test_eps2.csv")
+
     return {
-        "train_eps":  _r("train_eps.csv"),
-        "val_eps":    _r("val_eps.csv"),
-        "test_eps":   _r("test_eps.csv"),
-        "train_eps2": _r("train_eps2.csv"),
-        "val_eps2":   _r("val_eps2.csv"),
-        "test_eps2":  _r("test_eps2.csv"),
+        "train_eps":      _r("train_eps.csv"),
+        "val_eps":        _r("val_eps.csv"),
+        "test_eps":       _r("test_eps.csv"),
+        "train_eps2":     train_eps2,
+        "val_eps2":       val_eps2,
+        "test_eps2":      test_eps2,
+        "scaler":         scaler,
+        # Section 4: model input feature (scaled eps2); targets stay raw eps2.
+        "train_x_scaled": scaling_transform(train_eps2, scaler),
+        "val_x_scaled":   scaling_transform(val_eps2, scaler),
+        "test_x_scaled":  scaling_transform(test_eps2, scaler),
     }
 
 
-def _make_windows(eps: np.ndarray, W: int) -> tuple[np.ndarray, np.ndarray]:
+def _make_windows(x_scaled: np.ndarray, eps2_raw: np.ndarray, W: int) -> tuple[np.ndarray, np.ndarray]:
     """
     Sliding windows for sequence models.
-    X[i] = eps[i:i+W],  y[i] = eps2[i+W]
+    X[i] = x_scaled[i:i+W]  (Section 4 scaled input feature),
+    y[i] = eps2_raw[i+W]    (raw ε²_t proxy — the training target).
 
     Returns  X  (n_samples, W, 1),  y  (n_samples,)
     """
-    eps2 = eps ** 2
+    n = min(len(x_scaled), len(eps2_raw))
+    x_scaled = x_scaled[:n]
+    eps2_raw = eps2_raw[:n]
     X, y = [], []
-    for t in range(W, len(eps)):
-        X.append(eps[t - W: t])
-        y.append(eps2[t])
+    for t in range(W, n):
+        X.append(x_scaled[t - W: t])
+        y.append(eps2_raw[t])
     return np.array(X, dtype=np.float32)[..., np.newaxis], np.array(y, dtype=np.float32)
 
 
 def _make_windows_2ch(
-    eps: np.ndarray,
-    sigma2_garch: np.ndarray,
+    x_scaled:            np.ndarray,
+    sigma2_garch_scaled: np.ndarray,
+    eps2_raw:            np.ndarray,
     W: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Two-channel windows for NN-GARCH: (ε_t, σ²_t_garch).
+    Two-channel windows for NN-GARCH: (scaled ε²_t, scaled σ²_t_garch) —
+    both channels scaled the same way (Section 4) so they are on
+    comparable footing. Target y[i] = eps2_raw[i+W] (raw, unscaled).
+
     Returns  X  (n_samples, W, 2),  y  (n_samples,)
     """
-    eps2  = eps ** 2
-    n     = min(len(eps), len(sigma2_garch))
-    eps   = eps[:n]
-    sig2  = sigma2_garch[:n]
-    eps2  = eps ** 2
-    X, y  = [], []
+    n = min(len(x_scaled), len(sigma2_garch_scaled), len(eps2_raw))
+    x_scaled = x_scaled[:n]
+    sig2     = sigma2_garch_scaled[:n]
+    eps2_raw = eps2_raw[:n]
+    X, y = [], []
     for t in range(W, n):
-        ch0 = eps[t - W: t]
+        ch0 = x_scaled[t - W: t]
         ch1 = sig2[t - W: t]
         X.append(np.stack([ch0, ch1], axis=-1))
-        y.append(eps2[t])
+        y.append(eps2_raw[t])
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
 
 
@@ -387,54 +413,63 @@ def _run_model_series(
     n_seeds    = cfg["n_seeds"]
     seeds      = _derive_seeds(base_seed, n_seeds)
 
-    train_eps = data["train_eps"]
-    val_eps   = data["val_eps"]
-    test_eps  = data["test_eps"]
+    train_eps2 = data["train_eps2"]
+    val_eps2   = data["val_eps2"]
+    test_eps2  = data["test_eps2"]
+    scaler     = data["scaler"]
+    train_x    = data["train_x_scaled"]
+    val_x      = data["val_x_scaled"]
+    test_x     = data["test_x_scaled"]
 
     # Build windows
     if model_key == "nn_garch":
         if garch_sigma2_train is None:
             log.warning("[NN-GARCH] GARCH sigma2_train not available; skipping.")
             return
-        X_train, y_train = _make_windows_2ch(train_eps, garch_sigma2_train[:len(train_eps)], W)
+        garch_x_train = scaling_transform(garch_sigma2_train[:len(train_x)], scaler)
+
+        X_train, y_train = _make_windows_2ch(train_x, garch_x_train, train_eps2, W)
         # Val: concatenate so we can build windows overlapping train end
-        tv_eps    = np.concatenate([train_eps, val_eps])
-        tv_sig2   = np.concatenate([
-            garch_sigma2_train[:len(train_eps)],
-            np.full(len(val_eps), garch_sigma2_train[-1]),
+        tv_x     = np.concatenate([train_x, val_x])
+        tv_eps2  = np.concatenate([train_eps2, val_eps2])
+        tv_sig2x = np.concatenate([
+            garch_x_train,
+            np.full(len(val_x), garch_x_train[-1]),
         ])
-        X_tv, y_tv    = _make_windows_2ch(tv_eps, tv_sig2, W)
+        X_tv, y_tv    = _make_windows_2ch(tv_x, tv_sig2x, tv_eps2, W)
         X_val, y_val  = X_tv[len(X_train):], y_tv[len(y_train):]
 
         # Test windows
-        full_eps  = np.concatenate([train_eps, val_eps, test_eps])
-        full_sig2 = np.concatenate([
-            garch_sigma2_train[:len(train_eps)],
-            np.full(len(val_eps) + len(test_eps), garch_sigma2_train[-1]),
+        full_x     = np.concatenate([train_x, val_x, test_x])
+        full_eps2  = np.concatenate([train_eps2, val_eps2, test_eps2])
+        full_sig2x = np.concatenate([
+            garch_x_train,
+            np.full(len(val_x) + len(test_x), garch_x_train[-1]),
         ])
-        X_full, y_full = _make_windows_2ch(full_eps, full_sig2[:len(full_eps)], W)
-        n_tv    = len(train_eps) + len(val_eps)
-        X_test_w = X_full[n_tv - W:][:len(test_eps)]
+        X_full, y_full = _make_windows_2ch(full_x, full_sig2x[:len(full_x)], full_eps2, W)
+        n_tv    = len(train_x) + len(val_x)
+        X_test_w = X_full[n_tv - W:][:len(test_x)]
     else:
-        X_train, y_train = _make_windows(train_eps, W)
-        tv_eps  = np.concatenate([train_eps, val_eps])
-        X_tv, y_tv = _make_windows(tv_eps, W)
+        X_train, y_train = _make_windows(train_x, train_eps2, W)
+        tv_x    = np.concatenate([train_x, val_x])
+        tv_eps2 = np.concatenate([train_eps2, val_eps2])
+        X_tv, y_tv = _make_windows(tv_x, tv_eps2, W)
         X_val, y_val = X_tv[len(X_train):], y_tv[len(y_train):]
 
-        full_eps = np.concatenate([train_eps, val_eps, test_eps])
-        X_full, _ = _make_windows(full_eps, W)
-        n_tv     = len(train_eps) + len(val_eps)
-        X_test_w = X_full[n_tv - W:][:len(test_eps)]
+        full_x    = np.concatenate([train_x, val_x, test_x])
+        full_eps2 = np.concatenate([train_eps2, val_eps2, test_eps2])
+        X_full, _ = _make_windows(full_x, full_eps2, W)
+        n_tv     = len(train_x) + len(val_x)
+        X_test_w = X_full[n_tv - W:][:len(test_x)]
 
-    # SVR-GARCH: handled separately (sklearn)
+    # SVR-GARCH: handled separately (sklearn) — untouched by Section 4, it
+    # already operates directly on the raw eps2 proxy, not the LSTM window.
     if model_key == "svr_garch":
         from src.models.neural import SVRGARCHModel
         hp_svr = {"window_size": W, "C": 10.0, "svr_epsilon": 0.01, "gamma": "scale"}
         svr = SVRGARCHModel(hp_svr)
-        train_eps2 = data["train_eps2"]
-        test_eps2  = data["test_eps2"]
-        full_eps2  = np.concatenate([train_eps2, data["val_eps2"], test_eps2])
-        train_full_eps2 = full_eps2[:len(train_eps) + len(val_eps)]
+        full_eps2 = np.concatenate([train_eps2, val_eps2, test_eps2])
+        train_full_eps2 = full_eps2[:len(train_eps2) + len(val_eps2)]
 
         t0 = time.perf_counter()
         svr.fit(train_full_eps2)
@@ -535,18 +570,23 @@ def _lambda_sensitivity(
     # Fewer seeds for sensitivity (speed)
     seeds      = _derive_seeds(base_seed, 3)
 
-    train_eps = data["train_eps"]
-    val_eps   = data["val_eps"]
-    test_eps  = data["test_eps"]
+    train_eps2 = data["train_eps2"]
+    val_eps2   = data["val_eps2"]
+    test_eps2  = data["test_eps2"]
+    train_x    = data["train_x_scaled"]
+    val_x      = data["val_x_scaled"]
+    test_x     = data["test_x_scaled"]
 
-    X_train, y_train = _make_windows(train_eps, W)
-    X_tv, y_tv = _make_windows(np.concatenate([train_eps, val_eps]), W)
+    X_train, y_train = _make_windows(train_x, train_eps2, W)
+    tv_eps2 = np.concatenate([train_eps2, val_eps2])
+    X_tv, y_tv = _make_windows(np.concatenate([train_x, val_x]), tv_eps2, W)
     X_val, y_val = X_tv[len(X_train):], y_tv[len(y_train):]
-    full_eps = np.concatenate([train_eps, val_eps, test_eps])
-    X_full, _ = _make_windows(full_eps, W)
-    n_tv = len(train_eps) + len(val_eps)
-    X_test_w = X_full[n_tv - W:][:len(test_eps)]
-    test_eps2 = data["test_eps2"][:len(test_eps)]
+    full_x    = np.concatenate([train_x, val_x, test_x])
+    full_eps2 = np.concatenate([train_eps2, val_eps2, test_eps2])
+    X_full, _ = _make_windows(full_x, full_eps2, W)
+    n_tv = len(train_x) + len(val_x)
+    X_test_w = X_full[n_tv - W:][:len(test_x)]
+    test_eps2 = test_eps2[:len(test_x)]
 
     results = []
     for lam in lambdas:
