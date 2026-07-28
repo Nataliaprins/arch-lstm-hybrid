@@ -119,10 +119,76 @@ def _derive_seeds(base_seed: int, n: int) -> list[int]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Hybrid-loss normalization scales (Section 2 respecification)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Nominal λ used only to report λ_eff in logs/loss_scales.log (diagnostic —
+# not necessarily the λ any given model is trained/tuned with).
+_LOSS_SCALES_LAM_NOMINAL = 0.5
+
+
+def _compute_and_log_loss_scales(
+    series_name: str,
+    train_eps2:  np.ndarray,
+    cfg:         dict,
+    models_dir:  Path,
+    logs_dir:    Path,
+) -> dict:
+    """
+    Compute (or, if normalize=false, set to identity) the frozen s_sse/s_t
+    scales for one series, persist them to
+    outputs/models/<series>/loss_scales.json, and append a diagnostic line
+    to logs/loss_scales.log. Train-data only — never recomputed with
+    validation/test data.
+    """
+    from src.losses.hybrid_student_t import compute_loss_scales, effective_lambda
+
+    normalize = bool(cfg.get("loss", {}).get("normalize", True))
+
+    if normalize:
+        scales = compute_loss_scales(train_eps2)
+    else:
+        scales = {
+            "s_sse": 1.0, "s_t": 1.0,
+            "sigma2_const": float(np.mean(train_eps2)),
+            "nu_ref": None, "ratio_s_sse_over_s_t": 1.0,
+        }
+    scales["normalize"] = normalize
+
+    series_dir = models_dir / series_name
+    series_dir.mkdir(parents=True, exist_ok=True)
+    with open(series_dir / "loss_scales.json", "w") as fh:
+        json.dump(scales, fh, indent=2)
+
+    lam_eff = effective_lambda(_LOSS_SCALES_LAM_NOMINAL, scales["s_sse"], scales["s_t"])
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    with open(logs_dir / "loss_scales.log", "a") as fh:
+        fh.write(
+            f"{series_name}  normalize={normalize}  "
+            f"s_sse={scales['s_sse']:.6g}  s_t={scales['s_t']:.6g}  "
+            f"ratio_s_sse/s_t={scales['s_sse']/scales['s_t']:.6g}  "
+            f"lam_nominal={_LOSS_SCALES_LAM_NOMINAL}  lam_effective={lam_eff:.6g}\n"
+        )
+    log.info(
+        "[%s] loss scales: s_sse=%.6g  s_t=%.6g  ratio=%.6g  "
+        "lam_nominal=%.2f -> lam_effective=%.4f",
+        series_name, scales["s_sse"], scales["s_t"],
+        scales["s_sse"] / scales["s_t"], _LOSS_SCALES_LAM_NOMINAL, lam_eff,
+    )
+    return scales
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Hyperparameter sampling
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _sample_hp(rng: np.random.Generator, search_space: dict, window_size: int, model_type: str) -> dict:
+def _sample_hp(
+    rng: np.random.Generator,
+    search_space: dict,
+    window_size: int,
+    model_type: str,
+    loss_scales: dict | None = None,
+) -> dict:
     """Sample one hyperparameter configuration from the search space."""
     hp = {
         "lstm_units":   int(rng.choice(search_space["lstm_units"])),
@@ -135,6 +201,9 @@ def _sample_hp(rng: np.random.Generator, search_space: dict, window_size: int, m
     if model_type in ("lstm_t_student",):
         hp["nu"]  = int(rng.choice(search_space["nu"]))
         hp["lam"] = float(rng.choice(search_space["lambda_values"]))
+        if loss_scales is not None:
+            hp["s_sse"] = loss_scales["s_sse"]
+            hp["s_t"]   = loss_scales["s_t"]
     return hp
 
 
@@ -197,6 +266,7 @@ def _random_search(
     window_size: int,
     model_type: str,
     val_frac: float = 0.15,
+    loss_scales: dict | None = None,
 ) -> dict:
     """
     Random search with a single temporal val split.
@@ -214,7 +284,7 @@ def _random_search(
     best_hp       = None
 
     for trial in range(n_trials):
-        hp = _sample_hp(rng, search_space, window_size, model_type)
+        hp = _sample_hp(rng, search_space, window_size, model_type, loss_scales=loss_scales)
         seed_t = int(rng.integers(0, 2**31))
         try:
             _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
@@ -231,7 +301,8 @@ def _random_search(
     if best_hp is None:
         # Fallback to default
         best_hp = _sample_hp(
-            np.random.default_rng(base_seed), search_space, window_size, model_type
+            np.random.default_rng(base_seed), search_space, window_size, model_type,
+            loss_scales=loss_scales,
         )
     log.info("  Best hp: %s  (val_loss=%.6f)", best_hp, best_val_loss)
     return best_hp
@@ -301,6 +372,7 @@ def _run_model_series(
     garch_sigma2_train: np.ndarray | None,
     cfg:        dict,
     out_dir:    Path,
+    loss_scales: dict | None = None,
 ) -> None:
     """End-to-end train/tune/predict for one model × series."""
     W          = cfg["window_size"]
@@ -387,6 +459,7 @@ def _run_model_series(
         patience=patience, max_epochs=max_epochs,
         base_seed=base_seed, window_size=W, model_type=model_key,
         val_frac=0.15,
+        loss_scales=loss_scales if model_key == "lstm_t_student" else None,
     )
     tune_secs = time.perf_counter() - t_tune
 
@@ -441,6 +514,7 @@ def _lambda_sensitivity(
     cfg:     dict,
     out_dir: Path,
     series:  str,
+    loss_scales: dict | None = None,
 ) -> None:
     """
     Train LSTM-SSE-t-Student for each λ ∈ lambda_sensitivity.
@@ -478,6 +552,9 @@ def _lambda_sensitivity(
             "batch_size": 64, "learning_rate": 1e-3,
             "window_size": W, "nu": 5, "lam": lam,
         }
+        if loss_scales is not None:
+            hp["s_sse"] = loss_scales["s_sse"]
+            hp["s_t"]   = loss_scales["s_t"]
         preds_all = []
         for seed in seeds:
             try:
@@ -586,6 +663,10 @@ def run(config_path: str) -> None:
 
         data = _load_series(name, processed_dir)
 
+        loss_scales = _compute_and_log_loss_scales(
+            name, data["train_eps2"], cfg, models_dir, logs_dir,
+        )
+
         # Load GARCH sigma2_train for NN-GARCH
         garch_dir = models_dir / "GARCH11" / name
         garch_sigma2_train = None
@@ -608,6 +689,7 @@ def run(config_path: str) -> None:
                     model_key, build_fn, data,
                     garch_sigma2_train=garch_sigma2_train,
                     cfg=cfg, out_dir=out_dir,
+                    loss_scales=loss_scales,
                 )
                 elapsed = round(time.perf_counter() - t0, 2)
                 run_status.append({
@@ -643,6 +725,7 @@ def run(config_path: str) -> None:
                     data, cfg,
                     out_dir=models_dir / "LSTM-SSE-t-Student" / name,
                     series=name,
+                    loss_scales=loss_scales,
                 )
                 elapsed = round(time.perf_counter() - t0, 2)
                 run_status.append({

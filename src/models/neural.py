@@ -87,9 +87,12 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
 def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     """
     Same LSTM architecture as LSTM-SSE but trained with the hybrid
-    (1−λ)·MSE + λ·NLL_Student-t loss.
+    (1−λ)·MSE/s_sse + λ·NLL_Student-t/s_t loss.
 
-    Extra hp keys: nu (degrees of freedom), lam (λ mixing weight).
+    Extra hp keys: nu (degrees of freedom), lam (λ mixing weight),
+    s_sse / s_t (frozen normalization scales — see
+    src.losses.hybrid_student_t.compute_loss_scales; default 1.0/1.0
+    reproduces the un-normalized loss).
     """
     import tensorflow as tf
     from src.losses.hybrid_student_t import make_hybrid_loss
@@ -100,6 +103,8 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     nu    = hp["nu"]
     lam   = hp["lam"]
     W     = hp["window_size"]
+    s_sse = hp.get("s_sse", 1.0)
+    s_t   = hp.get("s_t", 1.0)
 
     inp   = tf.keras.Input(shape=(W, 1), name="eps_window")
     x     = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
@@ -110,7 +115,7 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
     model.compile(
         optimizer=tf.keras.optimizers.Adam(lr),
-        loss=make_hybrid_loss(nu=nu, lam=lam),
+        loss=make_hybrid_loss(nu=nu, lam=lam, s_sse=s_sse, s_t=s_t),
     )
     return model
 

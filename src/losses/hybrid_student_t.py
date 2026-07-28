@@ -1,12 +1,18 @@
 """
 hybrid_student_t.py — Hybrid SSE + Student-t loss (the proposed model's core).
 
-    L(σ²_t, ε²_t ; ν, λ) = (1 − λ)·L_SSE + λ·L_t
+    L(σ²_t, ε²_t ; ν, λ) = (1 − λ)·L_SSE / s_sse  +  λ·L_t / s_t
 
     L_SSE  = MSE(σ²_t, ε²_t)
     L_t    = (1/T) Σ_t [ ½ log σ²_t  +  ½(ν+1)·log(1 + ε²_t / (σ²_t·(ν−2))) ]
              (negative Student-t log-likelihood, per-observation average,
               constants that don't involve σ²_t are omitted during training)
+
+    s_sse, s_t : frozen, training-set-only normalization scales (see
+                 `compute_loss_scales`) that make both terms dimensionless
+                 and put λ on a comparable footing across markets. Passing
+                 s_sse=s_t=1.0 (the default) reproduces the un-normalized
+                 loss exactly.
 
 Methodological notes
 --------------------
@@ -14,6 +20,11 @@ Methodological notes
 * λ=0  → pure SSE / MSE   (LSTM-SSE baseline).
 * λ=1  → pure Student-t NLL (maximum-likelihood).
 * Intermediate λ balances estimation efficiency (L_t) and forecast accuracy (L_SSE).
+* Without normalization, L_SSE is in units of (pp²)² while L_t is in units of
+  log-likelihood; their raw scales can differ by two orders of magnitude
+  across markets (e.g. crypto vs. equity indices), which silently changes
+  what λ means from series to series. `compute_loss_scales` / `effective_lambda`
+  make this explicit and correctable.
 * For evaluation LL_t (OOS) tables we provide `student_t_nll_full()` which includes
   the Gamma-function constants so that the result is comparable to GARCH log-likelihood.
 """
@@ -28,15 +39,20 @@ import numpy as np
 # Keras / TensorFlow loss (used during training)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def make_hybrid_loss(nu: float, lam: float):
+def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
     """
     Factory that returns a Keras-compatible loss function.
 
     Parameters
     ----------
-    nu  : float — Student-t degrees of freedom  (must be > 2)
-    lam : float — mixing weight ∈ [0, 1]
-                  0  → pure MSE  |  1  → pure Student-t NLL
+    nu    : float — Student-t degrees of freedom  (must be > 2)
+    lam   : float — mixing weight ∈ [0, 1]
+                    0  → pure MSE  |  1  → pure Student-t NLL
+    s_sse : float — frozen training-set normalization scale for L_SSE
+                    (see `compute_loss_scales`). Default 1.0 reproduces the
+                    un-normalized loss.
+    s_t   : float — frozen training-set normalization scale for L_t.
+                    Default 1.0 reproduces the un-normalized loss.
 
     Returns
     -------
@@ -49,6 +65,8 @@ def make_hybrid_loss(nu: float, lam: float):
     nu_val   = float(max(nu, 2.01))
     lam_val  = float(np.clip(lam, 0.0, 1.0))
     nu_m2    = nu_val - 2.0                   # ν − 2
+    s_sse_val = float(s_sse)
+    s_t_val   = float(s_t)
 
     def _loss(y_true, y_pred):
         eps2   = tf.cast(y_true, tf.float32)
@@ -63,10 +81,69 @@ def make_hybrid_loss(nu: float, lam: float):
         log1p_r   = tf.math.log1p(ratio)
         L_t       = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_val + 1.0) * log1p_r)
 
-        return (1.0 - lam_val) * L_sse + lam_val * L_t
+        return (1.0 - lam_val) * L_sse / s_sse_val + lam_val * L_t / s_t_val
 
     _loss.__name__ = f"hybrid_t_nu{int(nu_val)}_lam{lam_val:.1f}"
     return _loss
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Loss-scale normalization (train-only, frozen)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def compute_loss_scales(eps2_train: np.ndarray, nu_ref: float = 5.0) -> dict:
+    """
+    Compute the frozen s_sse / s_t normalization scales for a series, using
+    **only** the training-set ε²_t proxy. Must never be recomputed with
+    validation/test data.
+
+    s_sse : sample variance of ε²_t over training (ddof=1). Puts L_SSE
+            (which behaves like a variance of ε² when the model is
+            uninformative) on an O(1) scale.
+    s_t   : |mean per-observation L_t| of a constant-variance reference
+            model (σ² = unconditional training variance, i.e. mean(ε²_train))
+            evaluated at a fixed reference ν (`nu_ref`, default 5 — chosen
+            once for scale purposes only, independent of whatever ν the
+            model itself is trained or learns with).
+
+    Returns
+    -------
+    dict with s_sse, s_t, sigma2_const (the constant reference variance),
+    nu_ref, and their ratio s_sse/s_t.
+    """
+    eps2_train = np.asarray(eps2_train, dtype=float)
+    s_sse = float(np.var(eps2_train, ddof=1))
+
+    sigma2_const = float(np.mean(eps2_train))
+    nu_ref = float(nu_ref)
+    nu_m2 = nu_ref - 2.0
+    L_t_const = float(np.mean(
+        0.5 * np.log(sigma2_const)
+        + 0.5 * (nu_ref + 1.0) * np.log1p(eps2_train / (sigma2_const * nu_m2))
+    ))
+    s_t = abs(L_t_const)
+
+    return {
+        "s_sse": s_sse,
+        "s_t": s_t,
+        "sigma2_const": sigma2_const,
+        "nu_ref": nu_ref,
+        "ratio_s_sse_over_s_t": s_sse / s_t if s_t > 0 else float("inf"),
+    }
+
+
+def effective_lambda(lam: float, s_sse: float, s_t: float) -> float:
+    """
+    Effective weight of the Student-t term once both terms are divided by
+    their scales:  λ_eff = (λ/s_t) / (λ/s_t + (1−λ)/s_sse).
+
+    With s_sse = s_t = 1.0 (no normalization), λ_eff == λ.
+    """
+    lam = float(np.clip(lam, 0.0, 1.0))
+    a = lam / s_t
+    b = (1.0 - lam) / s_sse
+    denom = a + b
+    return a / denom if denom > 0 else float("nan")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -133,6 +210,8 @@ def hybrid_loss_numpy(
     sigma2: np.ndarray,
     nu:     float,
     lam:    float,
+    s_sse:  float = 1.0,
+    s_t:    float = 1.0,
 ) -> float:
     """Hybrid loss value in NumPy — matches the Keras version."""
     sigma2 = np.maximum(sigma2, 1e-8)
@@ -145,4 +224,4 @@ def hybrid_loss_numpy(
         0.5 * np.log(sigma2)
         + 0.5 * (nu + 1) * np.log1p(eps2 / (sigma2 * nu_m2))
     ))
-    return (1.0 - lam) * L_sse + lam * L_t
+    return (1.0 - lam) * L_sse / float(s_sse) + lam * L_t / float(s_t)

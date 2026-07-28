@@ -70,4 +70,8 @@ dm_test:
 var_confidence_levels: [0.99, 0.975]
 
 # ── Verificación varianza incondicional ──
-unconditional_var_tolerance: 0.20   # aviso si difiere > 20%
+unconditional_var_tolerance: 0.20
+
+# ── Normalización de la pérdida híbrida (Sección 2 respecificación) ──
+loss:
+  normalize: true   # false reproduce exactamente el comportamiento anterior (sin normalizar)   # aviso si difiere > 20%
