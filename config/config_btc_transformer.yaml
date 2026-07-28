@@ -1,0 +1,51 @@
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  outputs: outputs
+  tables: outputs/tables
+  figures: outputs/figures
+  models: outputs/models
+  logs: logs
+  stamps: .stamps
+
+series:
+  - name: BTC-USD
+    ticker: BTC-USD
+    start: "2013-04-28"
+    end: "2026-07-01"
+
+split:
+  train_frac: 0.80
+  val_frac: 0.10
+
+seed: 42
+n_seeds: 10
+window_size: 22
+returns_scale: 100
+
+hyperparameter_search:
+  lstm_units: [16, 32, 64, 128]
+  nu: [3, 4, 5, 6, 7, 8]
+  dropout: [0.0, 0.1, 0.2, 0.3]
+  lambda_values: [0.1, 0.3, 0.5, 0.7, 0.9]
+  batch_size: [32, 64, 128]
+  max_epochs: 1000
+  patience: 20
+  n_trials: 50
+  cv_splits: 5
+
+lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+
+mcs:
+  level: 0.90
+  n_bootstrap: 10000
+  block_size: 20
+
+dm_test:
+  bandwidth: null
+
+var_confidence_levels: [0.99, 0.975]
+unconditional_var_tolerance: 0.20
+
+train_only_models: ["Transformer"]
+run_lambda_sensitivity: false

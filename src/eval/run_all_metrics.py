@@ -28,6 +28,7 @@ from src.eval.dm_test     import run_dm_battery
 from src.eval.mcs         import mcs
 from src.eval.bootstrap   import bootstrap_ci_all
 from src.eval.var_es_backtest import run_backtest
+from src.eval.encompassing_test import run_encompassing_battery
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +39,17 @@ log = logging.getLogger(__name__)
 
 # nu used for LL_t and VaR (default; per-model nu stored in best_hparams.json)
 DEFAULT_NU = 5.0
+
+# ── Forecast-encompassing pairs (candidate, benchmark) ──────────────────────
+# LSTM-SSE-t-Student is checked against both ARCH(1) (the model it is meant
+# to echo — heavy-tailed, first-order recursion) and GARCH(1,1) (the
+# project's canonical benchmark). NN-GARCH is checked against GARCH(1,1)
+# since its input is literally the GARCH(1,1) filtered variance.
+ENCOMPASSING_PAIRS = [
+    ("LSTM-SSE-t-Student", "ARCH(1)"),
+    ("LSTM-SSE-t-Student", "GARCH(1,1)"),
+    ("NN-GARCH",           "GARCH(1,1)"),
+]
 
 
 def load_config(path: str) -> dict:
@@ -122,6 +134,7 @@ def run(config_path: str) -> None:
     var_lvls = cfg.get("var_confidence_levels", [0.99, 0.975])
 
     all_results: dict = {}
+    encompassing_all: dict = {}
 
     for sc in cfg["series"]:
         series = sc["name"]
@@ -166,6 +179,23 @@ def run(config_path: str) -> None:
         if "GARCH(1,1)" not in sigma2_all:
             log.warning("[%s] GARCH(1,1) not found — Δ%% will be NaN", series)
         garch_s2 = sigma2_all.get("GARCH(1,1)", None)
+
+        # ── Forecast-encompassing test ───────────────────────────────────────
+        enc_result = run_encompassing_battery(test_eps2, sigma2_all, ENCOMPASSING_PAIRS)
+        encompassing_all[series] = enc_result
+        for pair_key, res in enc_result.items():
+            if "error" in res:
+                log.warning("  [%s] Encompassing %s: %s", series, pair_key, res["error"])
+            else:
+                log.info(
+                    "  [%s] Encompassing %-40s verdict=%-22s",
+                    series, pair_key, res["verdict"],
+                )
+                log.info(
+                    "      beta_bench=%.4f (p=%.4f)  beta_cand=%.4f (p=%.4f)",
+                    res["beta_benchmark"], res["p_benchmark"],
+                    res["beta_candidate"], res["p_candidate"],
+                )
 
         # ── Per-model metrics ────────────────────────────────────────────────
         model_results: dict = {}
@@ -323,6 +353,13 @@ def run(config_path: str) -> None:
     with open(out_path, "w") as fh:
         json.dump(all_results, fh, indent=2, default=str)
     log.info("Raw results saved to %s", out_path)
+
+    # ── Save encompassing-test results (separate file — not a model roster) ──
+    enc_path = tables_dir / "encompassing_results.json"
+    with open(enc_path, "w") as fh:
+        json.dump(encompassing_all, fh, indent=2, default=str)
+    log.info("Encompassing-test results saved to %s", enc_path)
+
     log.info("══ run_all_metrics complete ══════════════════════════════════")
 
 

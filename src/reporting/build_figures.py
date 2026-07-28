@@ -65,9 +65,15 @@ def _savefig(fig, path: Path) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def build_lambda_sensitivity(series_list: list[str], models_dir: Path, fig_dir: Path) -> None:
-    lam_dir = models_dir / "lambda_sensitivity"
-    if not lam_dir.exists():
-        log.warning("lambda_sensitivity dir not found; skipping.")
+    """Build the λ-sensitivity figure."""
+    candidates = [
+        models_dir / "lambda_sensitivity",
+        models_dir / "LSTM-SSE-t-Student" / "lambda_sensitivity",
+        models_dir / "LSTM-SSE-t-Student",
+    ]
+    lam_dir = next((p for p in candidates if p.exists()), None)
+    if lam_dir is None:
+        log.warning("lambda_sensitivity dir not found in any expected location; skipping.")
         return
 
     fig, axes = plt.subplots(1, len(series_list), figsize=(4 * len(series_list), 4), sharey=False)
@@ -77,11 +83,16 @@ def build_lambda_sensitivity(series_list: list[str], models_dir: Path, fig_dir: 
     for ax, series in zip(axes, series_list):
         jf = lam_dir / f"{series}_lambda_sensitivity.json"
         if not jf.exists():
-            ax.set_title(f"{series} (no data)")
-            continue
+            alt = lam_dir / series / f"{series}_lambda_sensitivity.json"
+            if alt.exists():
+                jf = alt
+            else:
+                ax.set_title(f"{series} (no data)")
+                continue
+
         data = json.loads(jf.read_text())
-        lambdas = [d["lambda"] for d in data]
-        mses    = [d["mse"]    for d in data]
+        lambdas = [d.get("lambda") for d in data]
+        mses    = [d.get("mse")    for d in data]
 
         ax.plot(lambdas, mses, "o-", color=COLORS[0], linewidth=2, markersize=6)
         ax.axvline(lambdas[int(np.argmin([m for m in mses if np.isfinite(m)] or [0]))],
@@ -95,10 +106,6 @@ def build_lambda_sensitivity(series_list: list[str], models_dir: Path, fig_dir: 
     fig.tight_layout()
     _savefig(fig, fig_dir / "lambda_sensitivity.pdf")
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Figure 2 — Train / val curves (proposed model, all seeds)
-# ──────────────────────────────────────────────────────────────────────────────
 
 def build_trainval_curves(
     series_list: list[str],

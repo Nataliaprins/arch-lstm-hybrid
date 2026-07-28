@@ -1,10 +1,11 @@
 """
-build_tables.py — Emit Tables 3–9 and 4+A1–A4 in .csv, .tex (booktabs), .docx.
+build_tables.py — Emit Tables 3–11 and 4+A1–A4 in .csv, .tex (booktabs), .docx.
 
 Usage:
     python -m src.reporting.build_tables --config config/config.yaml
 
 Input:  outputs/tables/raw_results.json
+        outputs/tables/encompassing_results.json
         outputs/models/<model>/<series>/{params.json, fit_info.json}
 Output: outputs/tables/  *.csv  *.tex  *.docx
 
@@ -14,6 +15,9 @@ Table 3   — Model roster (static)
 Tables 4–7 — OOS performance, one per series
 Table 8   — Cross-market Δ% summary
 Table 9   — Diebold–Mariano
+Table 10  — Forecast-Encompassing
+Table 11a–11d — Risk backtests (Kupiec + Christoffersen + VaR + ES), one per series
+Table 12  — Cross-market risk summary (Kupiec + Christoffersen + VaR + ES)
 Table 4e  — GARCH(1,1) estimation (all four series)
 Tables A1–A4 — Full estimation per series (all econometric models)
 """
@@ -396,6 +400,263 @@ def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> No
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Table 10 — Forecast-Encompassing Tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table10(encompassing_all: dict, series_list: list[str], out_dir: Path) -> None:
+    """
+    ε²_t = b0 + b1·σ²_benchmark + b2·σ²_candidate + u_t   (HAC SE).
+
+    One row per (candidate, benchmark) pair; columns show β_candidate
+    (with significance stars on p_candidate) and the verdict per series.
+    """
+    all_pairs = sorted({
+        pair for s in encompassing_all.values() for pair in s
+    })
+
+    col_tuples = [(s, stat) for s in series_list for stat in ["β_cand", "verdict"]]
+    cols = pd.MultiIndex.from_tuples(col_tuples)
+
+    verdict_labels = {
+        "candidate_adds_info":  "Adds info",
+        "benchmark_sufficient": "Benchmark suff.",
+        "both_contribute":      "Both contribute",
+        "neither_significant":  "Neither sig.",
+    }
+
+    rows = []
+    for pair in all_pairs:
+        row = []
+        for series in series_list:
+            res = encompassing_all.get(series, {}).get(pair, {})
+            if "error" in res:
+                row.extend(["—", "n/a"])
+                continue
+            b_cand  = res.get("beta_candidate")
+            p_cand  = res.get("p_candidate")
+            stars   = _sig_stars(p_cand)
+            b_str   = f"{b_cand:.3f}{stars}" if b_cand is not None else "—"
+            verdict = verdict_labels.get(res.get("verdict"), "—")
+            row.extend([b_str, verdict])
+        rows.append(row)
+
+    pair_labels = [p.replace("_vs_", " vs. ") for p in all_pairs]
+    df = pd.DataFrame(rows, index=pair_labels, columns=cols)
+
+    note = (
+        "Forecast-encompassing regression: \\varepsilon^2_t = b_0 + b_1 "
+        "\\sigma^2_{benchmark,t} + b_2 \\sigma^2_{candidate,t} + u_t, HAC SE "
+        "(Newey--West, bandwidth \\lfloor 4(T/100)^{2/9} \\rfloor). "
+        "\\beta_{cand}: coefficient on the candidate forecast (significance "
+        "from its own HAC p-value). 'Adds info': candidate significant, "
+        "benchmark not — benchmark is redundant given the candidate. "
+        "'Both contribute': both significant — complementary information. "
+        "'Benchmark suff.': candidate carries no information beyond the "
+        "benchmark. 'Neither sig.': inconclusive (often collinearity). "
+        "Significance: *** p<0.01, ** p<0.05, * p<0.10."
+    )
+    stem = out_dir / "Table10_Encompassing"
+    _save_all(df, stem, "Table 10. Forecast-Encompassing Tests", "tab:encompassing", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Table 11a–11d — Risk backtests (Kupiec + Christoffersen + VaR + ES)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _fmt_bool_pass(p_uc: Any) -> str:
+    if p_uc is None or (isinstance(p_uc, float) and not np.isfinite(p_uc)):
+        return "—"
+    return "Yes" if p_uc >= 0.05 else "No"
+
+
+def _fmt_bool_pass_cc(p_cc: Any) -> str:
+    if p_cc is None or (isinstance(p_cc, float) and not np.isfinite(p_cc)):
+        return "—"
+    return "Yes" if p_cc >= 0.05 else "No"
+
+
+def _risk_row(m_res: dict, level: str) -> dict:
+    ves = m_res.get("var_es", {}).get(level, {})
+    st  = ves.get("student_t", {})
+    return {
+        f"LR_uc@{level}": _fmt(st.get("LR_uc"), decimals=4),
+        f"p_uc@{level}": _fmt(st.get("p_uc"), decimals=4),
+        f"ExcRate@{level}": _fmt(st.get("exc_rate"), decimals=4),
+        f"n_exc@{level}": str(st.get("n_exc", "—")),
+        f"KupiecPass@{level}": _fmt_bool_pass(st.get("p_uc")),
+        f"LR_ind@{level}": _fmt(st.get("LR_ind"), decimals=4),
+        f"p_ind@{level}": _fmt(st.get("p_ind"), decimals=4),
+        f"LR_cc@{level}": _fmt(st.get("LR_cc"), decimals=4),
+        f"p_cc@{level}": _fmt(st.get("p_cc"), decimals=4),
+        f"ChristoffersenPass@{level}": _fmt_bool_pass_cc(st.get("p_cc")),
+        f"VaR_t_mean@{level}": _fmt(ves.get("var_t_mean"), decimals=6),
+        f"ES_mean@{level}": _fmt(ves.get("es_mean"), decimals=6),
+    }
+
+
+def build_table11_risk(series: str, results: dict, tlabel: str, out_dir: Path) -> None:
+    if not results:
+        return
+
+    all_models = sorted(results.keys())
+    levels = sorted({
+        lv
+        for m in results.values()
+        for lv in m.get("var_es", {}).keys()
+    }, key=float, reverse=True)
+
+    rows = []
+    for model in all_models:
+        m_res = results.get(model, {})
+        row = {}
+        for lv in levels:
+            row.update(_risk_row(m_res, lv))
+        rows.append((model, row))
+
+    if not rows:
+        return
+
+    df = pd.DataFrame([r for _, r in rows], index=[m for m, _ in rows])
+    note = (
+        "Student-t VaR backtest over OOS residuals. Kupiec uses the UC LR test "
+        "for correct unconditional exceedance rate (H0: hit rate = tail probability). "
+        "Christoffersen uses the CC LR test (UC + independence). "
+        "KupiecPass = Yes when p_uc >= 0.05; ChristoffersenPass = Yes when p_cc >= 0.05. "
+        "VaR_t_mean and ES_mean are averages of model-implied risk forecasts over the OOS window."
+    )
+    stem = out_dir / f"Table11_{tlabel}_Risk_{series}"
+    _save_all(
+        df,
+        stem,
+        f"Table 11{tlabel}. Risk Backtest Summary — {series}",
+        f"tab:risk_{series.lower()}",
+        note,
+    )
+
+
+def build_table12_risk_summary(all_results: dict, series_list: list[str], out_dir: Path) -> None:
+    """Cross-market summary of Kupiec, Christoffersen, VaR and ES by model."""
+    all_models = sorted({m for s in all_results.values() for m in s})
+    levels = ["0.99", "0.975"]
+
+    rows = []
+    for model in all_models:
+        rec = {"Model": model}
+        pass_count_uc_total = 0
+        obs_uc_total = 0
+        pass_count_cc_total = 0
+        obs_cc_total = 0
+
+        for lv in levels:
+            lr_vals = []
+            p_vals = []
+            lr_ind_vals = []
+            p_ind_vals = []
+            lr_cc_vals = []
+            p_cc_vals = []
+            var_vals = []
+            es_vals = []
+            pass_count_uc_lv = 0
+            obs_uc_lv = 0
+            pass_count_cc_lv = 0
+            obs_cc_lv = 0
+
+            for series in series_list:
+                m_res = all_results.get(series, {}).get(model, {})
+                ves = m_res.get("var_es", {}).get(lv, {})
+                st = ves.get("student_t", {})
+
+                lr_uc = st.get("LR_uc")
+                p_uc = st.get("p_uc")
+                lr_ind = st.get("LR_ind")
+                p_ind = st.get("p_ind")
+                lr_cc = st.get("LR_cc")
+                p_cc = st.get("p_cc")
+                var_m = ves.get("var_t_mean")
+                es_m = ves.get("es_mean")
+
+                if isinstance(lr_uc, (int, float)) and np.isfinite(lr_uc):
+                    lr_vals.append(float(lr_uc))
+                if isinstance(p_uc, (int, float)) and np.isfinite(p_uc):
+                    p_vals.append(float(p_uc))
+                    obs_uc_lv += 1
+                    if p_uc >= 0.05:
+                        pass_count_uc_lv += 1
+                if isinstance(lr_ind, (int, float)) and np.isfinite(lr_ind):
+                    lr_ind_vals.append(float(lr_ind))
+                if isinstance(p_ind, (int, float)) and np.isfinite(p_ind):
+                    p_ind_vals.append(float(p_ind))
+                if isinstance(lr_cc, (int, float)) and np.isfinite(lr_cc):
+                    lr_cc_vals.append(float(lr_cc))
+                if isinstance(p_cc, (int, float)) and np.isfinite(p_cc):
+                    p_cc_vals.append(float(p_cc))
+                    obs_cc_lv += 1
+                    if p_cc >= 0.05:
+                        pass_count_cc_lv += 1
+                if isinstance(var_m, (int, float)) and np.isfinite(var_m):
+                    var_vals.append(float(var_m))
+                if isinstance(es_m, (int, float)) and np.isfinite(es_m):
+                    es_vals.append(float(es_m))
+
+            pass_count_uc_total += pass_count_uc_lv
+            obs_uc_total += obs_uc_lv
+            pass_count_cc_total += pass_count_cc_lv
+            obs_cc_total += obs_cc_lv
+
+            rec[f"PassRate_UC@{lv}(%)"] = 100.0 * pass_count_uc_lv / obs_uc_lv if obs_uc_lv > 0 else np.nan
+            rec[f"Avg_p_uc@{lv}"] = float(np.mean(p_vals)) if p_vals else np.nan
+            rec[f"Avg_LR_uc@{lv}"] = float(np.mean(lr_vals)) if lr_vals else np.nan
+            rec[f"PassRate_CC@{lv}(%)"] = 100.0 * pass_count_cc_lv / obs_cc_lv if obs_cc_lv > 0 else np.nan
+            rec[f"Avg_p_cc@{lv}"] = float(np.mean(p_cc_vals)) if p_cc_vals else np.nan
+            rec[f"Avg_LR_cc@{lv}"] = float(np.mean(lr_cc_vals)) if lr_cc_vals else np.nan
+            rec[f"Avg_p_ind@{lv}"] = float(np.mean(p_ind_vals)) if p_ind_vals else np.nan
+            rec[f"Avg_LR_ind@{lv}"] = float(np.mean(lr_ind_vals)) if lr_ind_vals else np.nan
+            rec[f"Avg_VaR_t@{lv}"] = float(np.mean(var_vals)) if var_vals else np.nan
+            rec[f"Avg_ES@{lv}"] = float(np.mean(es_vals)) if es_vals else np.nan
+
+        rec["PassRate_UC_Global(%)"] = 100.0 * pass_count_uc_total / obs_uc_total if obs_uc_total > 0 else np.nan
+        rec["PassRate_CC_Global(%)"] = 100.0 * pass_count_cc_total / obs_cc_total if obs_cc_total > 0 else np.nan
+        rows.append(rec)
+
+    if not rows:
+        return
+
+    df_raw = pd.DataFrame(rows).set_index("Model")
+    # Higher pass rates and p-values are better; lower LR stats / VaR / ES are better.
+    sort_cols = [
+        "PassRate_CC_Global(%)",
+        "PassRate_UC_Global(%)",
+        "Avg_p_cc@0.99",
+        "Avg_p_cc@0.975",
+        "Avg_ES@0.99",
+        "Avg_ES@0.975",
+    ]
+    asc = [False, False, False, False, True, True]
+    df_raw = df_raw.sort_values(by=sort_cols, ascending=asc, na_position="last")
+
+    df = pd.DataFrame(index=df_raw.index)
+    for col in df_raw.columns:
+        if "PassRate" in col:
+            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.1f}")
+        elif "Avg_p_uc" in col:
+            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.4f}")
+        elif "Avg_LR_uc" in col:
+            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.4f}")
+        else:
+            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.6f}")
+
+    note = (
+        "Cross-market averages from saved OOS risk artifacts. PassRate@level = "
+        "percentage of markets where the test does not reject at 5%%. "
+        "UC = Kupiec unconditional coverage (p_uc); CC = Christoffersen conditional coverage (p_cc). "
+        "Global rates pool both levels (0.99 and 0.975) across all markets. "
+        "Higher pass rates and p-values are preferable; lower LR statistics, Avg_VaR_t and Avg_ES indicate tighter risk forecasts."
+    )
+    stem = out_dir / "Table12_Risk_CrossMarket_Summary"
+    _save_all(df, stem, "Table 12. Cross-Market Risk Summary", "tab:risk_cross_market", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Table 4e — GARCH(1,1) estimation (all four series)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -599,6 +860,9 @@ def run(config_path: str) -> None:
         return
     all_results = json.loads(raw_path.read_text())
 
+    enc_path = tables_dir / "encompassing_results.json"
+    encompassing_all = json.loads(enc_path.read_text()) if enc_path.exists() else {}
+
     series_list = [s["name"] for s in cfg["series"]]
 
     # ── Table 3: roster ───────────────────────────────────────────────────────
@@ -617,6 +881,22 @@ def run(config_path: str) -> None:
     # ── Table 9: Diebold–Mariano ──────────────────────────────────────────────
     log.info("Building Table 9 (DM) …")
     build_table9(all_results, series_list, tables_dir)
+
+    # ── Table 10: Forecast-Encompassing ───────────────────────────────────────
+    if encompassing_all:
+        log.info("Building Table 10 (Encompassing) …")
+        build_table10(encompassing_all, series_list, tables_dir)
+    else:
+        log.warning("encompassing_results.json not found — skipping Table 10.")
+
+    # ── Table 11a–11d: Risk backtests ───────────────────────────────────────
+    for tlabel, series in zip(["a", "b", "c", "d"], series_list):
+        log.info("Building Table 11%s (Risk %s) …", tlabel, series)
+        build_table11_risk(series, all_results.get(series, {}), tlabel=tlabel, out_dir=tables_dir)
+
+    # ── Table 12: cross-market risk summary ──────────────────────────────────
+    log.info("Building Table 12 (Risk cross-market summary) …")
+    build_table12_risk_summary(all_results, series_list, tables_dir)
 
     # ── Table 4e: GARCH estimation ────────────────────────────────────────────
     log.info("Building Table 4e (GARCH estimation) …")

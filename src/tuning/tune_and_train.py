@@ -39,6 +39,16 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+def _progress_bar(done: int, total: int, width: int = 26) -> str:
+    """Return an ASCII progress bar string."""
+    if total <= 0:
+        return "[" + ("-" * width) + "]   0.0%"
+    ratio = min(max(done / total, 0.0), 1.0)
+    fill = int(round(ratio * width))
+    bar = "#" * fill + "-" * (width - fill)
+    return f"[{bar}] {ratio * 100:5.1f}%"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -415,11 +425,6 @@ def _run_model_series(
     with open(out_dir / "histories.json", "w") as fh:
         json.dump(histories, fh)
 
-    # Count params (from last seed model; weights already cleared, load dummy)
-    n_params_approx = sum(
-        np.prod(h["train_loss"].__class__.__mro__ or [1]) for h in [{}]
-    )
-
     log.info(
         "  [%s] done  tune=%.0fs  train=%.0fs  sigma2_test mean=%.5f ± %.5f",
         model_key, tune_secs, train_secs,
@@ -529,7 +534,9 @@ def run(config_path: str) -> None:
     cfg = load_config(config_path)
     processed_dir = Path(cfg["paths"]["processed_data"])
     models_dir    = Path(cfg["paths"]["models"])
+    logs_dir      = Path(cfg["paths"]["logs"])
     models_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
 
     from src.models.neural import (
         build_lstm_sse, build_lstm_t_student, build_cnn_lstm,
@@ -547,6 +554,31 @@ def run(config_path: str) -> None:
         ("transformer",       build_transformer,         "Transformer"),
         ("lstm_t_student",    build_lstm_t_student,      "LSTM-SSE-t-Student"),
     ]
+
+    # Optional config filter: keep only selected models.
+    # Accepted values in train_only_models: model key (e.g., "lstm_t_student")
+    # or output folder name (e.g., "LSTM-SSE-t-Student").
+    model_filter = {str(m).strip() for m in cfg.get("train_only_models", [])}
+    if model_filter:
+        NEURAL_MODELS = [
+            tup for tup in NEURAL_MODELS
+            if (tup[0] in model_filter) or (tup[2] in model_filter)
+        ]
+        if not NEURAL_MODELS:
+            raise ValueError(
+                "train_only_models did not match any known models. "
+                "Use model keys (e.g. lstm_t_student) or folder names "
+                "(e.g. LSTM-SSE-t-Student)."
+            )
+
+    run_lambda_sensitivity = bool(cfg.get("run_lambda_sensitivity", True))
+
+    total_tasks = len(cfg["series"]) * (len(NEURAL_MODELS) + (1 if run_lambda_sensitivity else 0))
+    task_done = 0
+    run_status: list[dict] = []
+
+    log.info("Training plan: %d series × %d model-steps = %d tasks",
+             len(cfg["series"]), len(NEURAL_MODELS) + (1 if run_lambda_sensitivity else 0), total_tasks)
 
     for series_cfg in cfg["series"]:
         name = series_cfg["name"]
@@ -566,27 +598,92 @@ def run(config_path: str) -> None:
                 garch_sigma2_train = np.load(alt)
 
         for model_key, build_fn, folder in NEURAL_MODELS:
+            step_label = f"{name}/{folder}"
+            log.info("%s  START %s", _progress_bar(task_done, total_tasks), step_label)
             log.info("── %s / %s ──", name, folder)
             out_dir = models_dir / folder / name
+            t0 = time.perf_counter()
             try:
                 _run_model_series(
                     model_key, build_fn, data,
                     garch_sigma2_train=garch_sigma2_train,
                     cfg=cfg, out_dir=out_dir,
                 )
+                elapsed = round(time.perf_counter() - t0, 2)
+                run_status.append({
+                    "series": name,
+                    "step": folder,
+                    "status": "OK",
+                    "seconds": elapsed,
+                    "error": "",
+                })
+                log.info("%s  DONE  %s (%.2fs)", _progress_bar(task_done + 1, total_tasks), step_label, elapsed)
             except Exception as exc:
+                elapsed = round(time.perf_counter() - t0, 2)
+                run_status.append({
+                    "series": name,
+                    "step": folder,
+                    "status": "ERROR",
+                    "seconds": elapsed,
+                    "error": str(exc),
+                })
                 log.error("[%s/%s] failed: %s", name, folder, exc, exc_info=True)
+                log.info("%s  FAIL  %s (%.2fs)", _progress_bar(task_done + 1, total_tasks), step_label, elapsed)
+            finally:
+                task_done += 1
 
         # λ-sensitivity for the proposed model
-        log.info("── %s / lambda-sensitivity ──", name)
-        try:
-            _lambda_sensitivity(
-                data, cfg,
-                out_dir=models_dir / "LSTM-SSE-t-Student" / name,
-                series=name,
-            )
-        except Exception as exc:
-            log.error("[%s/lambda_sensitivity] failed: %s", name, exc, exc_info=True)
+        if run_lambda_sensitivity:
+            step_label = f"{name}/lambda-sensitivity"
+            log.info("%s  START %s", _progress_bar(task_done, total_tasks), step_label)
+            log.info("── %s / lambda-sensitivity ──", name)
+            t0 = time.perf_counter()
+            try:
+                _lambda_sensitivity(
+                    data, cfg,
+                    out_dir=models_dir / "LSTM-SSE-t-Student" / name,
+                    series=name,
+                )
+                elapsed = round(time.perf_counter() - t0, 2)
+                run_status.append({
+                    "series": name,
+                    "step": "lambda-sensitivity",
+                    "status": "OK",
+                    "seconds": elapsed,
+                    "error": "",
+                })
+                log.info("%s  DONE  %s (%.2fs)", _progress_bar(task_done + 1, total_tasks), step_label, elapsed)
+            except Exception as exc:
+                elapsed = round(time.perf_counter() - t0, 2)
+                run_status.append({
+                    "series": name,
+                    "step": "lambda-sensitivity",
+                    "status": "ERROR",
+                    "seconds": elapsed,
+                    "error": str(exc),
+                })
+                log.error("[%s/lambda_sensitivity] failed: %s", name, exc, exc_info=True)
+                log.info("%s  FAIL  %s (%.2fs)", _progress_bar(task_done + 1, total_tasks), step_label, elapsed)
+            finally:
+                task_done += 1
+
+    # Run summary
+    status_df = pd.DataFrame(run_status)
+    n_ok = int((status_df["status"] == "OK").sum()) if not status_df.empty else 0
+    n_err = int((status_df["status"] == "ERROR").sum()) if not status_df.empty else 0
+    status_csv = logs_dir / "train_run_status.csv"
+    status_json = logs_dir / "train_run_status.json"
+    status_df.to_csv(status_csv, index=False)
+    status_df.to_json(status_json, orient="records", indent=2)
+
+    log.info("══ Training summary ══")
+    log.info("Tasks total=%d  OK=%d  ERROR=%d", len(status_df), n_ok, n_err)
+    log.info("Status files: %s  |  %s", status_csv, status_json)
+    if n_err > 0:
+        for _, r in status_df[status_df["status"] == "ERROR"].iterrows():
+            log.info("  ERROR %-9s %-20s %7.2fs  %s", r["series"], r["step"], r["seconds"], r["error"])
+    else:
+        log.info("All training steps finished successfully.")
 
     log.info("══ tune_and_train complete ═══════════════════════════════════")
 
