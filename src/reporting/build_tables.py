@@ -216,14 +216,16 @@ PANEL_ORDER = {
     "Panel B": ["SVR-GARCH", "NN-GARCH", "LSTM-SSE", "CNN-LSTM",
                 "LSTM-Attention", "TCN", "Transformer"],
     "Panel C": ["LSTM-SSE-t-Student"],
+    # Section 9.2: minimum-bar reference forecast every other model must beat.
+    "Panel D": ["Constant (unconditional variance)"],
 }
 
 PANEL_MAP = {m: p for p, ms in PANEL_ORDER.items() for m in ms}
 
-OOS_COLS = ["MSE", "RMSE", "MAE", "R2", "QLIKE", "LL_t_OOS", "Delta_MSE", "MCS_90"]
+OOS_COLS = ["MSE", "RMSE", "MAE", "R2", "QLIKE", "LL_t_OOS", "Delta_MSE", "MCS_90", "DEGENERATE"]
 
 
-def _oos_row(model: str, mdata: dict) -> dict:
+def _oos_row(model: str, mdata: dict, degeneracy: dict | None = None) -> dict:
     m = mdata.get("metrics", {})
     s = mdata.get("std", {})
 
@@ -248,6 +250,13 @@ def _oos_row(model: str, mdata: dict) -> dict:
     mse_str = (f"{mse_v:.5f} ± {std_mse:.5f}" if std_mse else _fmt(mse_v, 5))
     mae_str = (f"{mae_v:.5f} ± {std_mae:.5f}" if std_mae else _fmt(mae_v, 5))
 
+    # Section 9.1: degeneracy flag, if available.
+    deg = (degeneracy or {}).get(model)
+    if deg is None:
+        deg_str = "—"
+    else:
+        deg_str = "DEGENERATE" if deg.get("degenerate") else "ok"
+
     return {
         "MSE":        mse_str,
         "RMSE":       _fmt(rmse_v, 5),
@@ -257,6 +266,7 @@ def _oos_row(model: str, mdata: dict) -> dict:
         "LL_t_OOS":   _fmt(ll_v, 4),
         "Delta_MSE":  _fmt(dm_v, 2, pct=True) if "GARCH" not in model else "—",
         "MCS_90":     mcs_str,
+        "DEGENERATE": deg_str,
     }
 
 
@@ -275,14 +285,15 @@ def _best_col_mask(df_raw: pd.DataFrame, col: str) -> pd.Index:
         return pd.Index([])
 
 
-def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path) -> None:
+def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
+                     degeneracy: dict | None = None) -> None:
     rows = []
     for panel, models in PANEL_ORDER.items():
         panel_header = {"MSE": f"--- {panel} ---"}
         rows.append((panel, panel_header))
         for m in models:
             if m in results:
-                rows.append((m, _oos_row(m, results[m])))
+                rows.append((m, _oos_row(m, results[m], degeneracy)))
 
     df_raw = pd.DataFrame(
         [r for _, r in rows],
@@ -307,6 +318,11 @@ def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path) -> Non
         "Δ%%MSE relative to GARCH(1,1); negative = improvement. "
         "MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). "
         "Panel B: mean ± s.d. over S=10 seeds. "
+        "Panel D: fixed at the training-split unconditional variance -- the "
+        "minimum bar every other model should beat. "
+        "DEGENERATE (src.eval.degeneracy): temporal coefficient of variation "
+        "of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant "
+        "forecast. "
         "Standard errors Bollerslev–Wooldridge; *** p<0.01."
     )
 
@@ -932,6 +948,12 @@ def run(config_path: str) -> None:
     enc_path = tables_dir / "encompassing_results.json"
     encompassing_all = json.loads(enc_path.read_text()) if enc_path.exists() else {}
 
+    deg_path = tables_dir / "degeneracy_flags.json"
+    degeneracy_all = json.loads(deg_path.read_text()) if deg_path.exists() else {}
+    if not deg_path.exists():
+        log.warning("degeneracy_flags.json not found — Tables 4-7 DEGENERATE column "
+                     "will show '—' (run `python -m src.eval.degeneracy` first).")
+
     series_list = [s["name"] for s in cfg["series"]]
 
     # ── Table 3: roster ───────────────────────────────────────────────────────
@@ -941,7 +963,8 @@ def run(config_path: str) -> None:
     # ── Tables 4–7: OOS performance ───────────────────────────────────────────
     for i, series in enumerate(series_list, start=4):
         log.info("Building Table %d (OOS %s) …", i, series)
-        build_table_oos(series, all_results.get(series, {}), tnum=i, out_dir=tables_dir)
+        build_table_oos(series, all_results.get(series, {}), tnum=i, out_dir=tables_dir,
+                         degeneracy=degeneracy_all.get(series, {}))
 
     # ── Table 8: cross-market summary ─────────────────────────────────────────
     log.info("Building Table 8 (cross-market) …")

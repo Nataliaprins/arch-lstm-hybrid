@@ -92,6 +92,12 @@ NEURAL_FOLDERS = {
     "LSTM-SSE-t-Student": "LSTM-SSE-t-Student",
 }
 
+# Section 9.2: minimum-bar reference forecast, fixed at the training-split
+# unconditional variance for the whole OOS window. Injected into sigma2_all
+# like any other model so it automatically gets the same metrics/DM/MCS
+# treatment as every real model (Tables 4-7, 8, 9).
+CONSTANT_MODEL_NAME = "Constant (unconditional variance)"
+
 
 def _load_sigma2(model_dir: Path, series: str) -> np.ndarray | None:
     for fname in ("sigma2_test.npy",):
@@ -147,6 +153,14 @@ def run(config_path: str) -> None:
         sigma2_all:      dict[str, np.ndarray] = {}
         sigma2_per_seed: dict[str, np.ndarray] = {}
         nu_by_model:     dict[str, float]      = {}
+
+        # Section 9.2: constant reference forecast, fixed at the training-split
+        # unconditional variance -- deliberately independent of Section 4's
+        # input scaler choice, computed directly from train_eps2.
+        train_eps2 = _read_eps(processed_dir, series, "train") ** 2
+        sigma2_train_uncond = float(np.mean(train_eps2))
+        sigma2_all[CONSTANT_MODEL_NAME]  = np.full(len(test_eps2), sigma2_train_uncond)
+        nu_by_model[CONSTANT_MODEL_NAME] = DEFAULT_NU
 
         # Econometric models
         for folder, display in {**ECON_FOLDERS}.items():
