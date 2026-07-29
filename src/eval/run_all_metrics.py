@@ -24,7 +24,7 @@ import pandas as pd
 import yaml
 
 from src.eval.metrics     import compute_all, qlike_array, mse_array
-from src.eval.dm_test     import run_dm_battery
+from src.eval.dm_test     import run_dm_battery, run_tost_battery
 from src.eval.mcs         import mcs
 from src.eval.bootstrap   import bootstrap_ci_all
 from src.eval.var_es_backtest import run_backtest
@@ -138,6 +138,7 @@ def run(config_path: str) -> None:
     mcs_blk  = mcs_cfg.get("block_size", 20)
     mcs_lvl  = mcs_cfg.get("level", 0.90)
     var_lvls = cfg.get("var_confidence_levels", [0.99, 0.975])
+    tost_delta_pct = cfg.get("tost", {}).get("delta_pct", 0.02)
 
     all_results: dict = {}
     encompassing_all: dict = {}
@@ -323,11 +324,23 @@ def run(config_path: str) -> None:
                 log.warning("[%s] DM MSE failed: %s", series, exc)
                 dm_mse_res = {}
 
+            # ── TOST equivalence (Section 9.4): margin = tost_delta_pct × GARCH(1,1)'s own mean QLIKE ──
+            tost_result: dict = {}
+            if "GARCH(1,1)" in qlike_arrays:
+                delta = tost_delta_pct * float(np.mean(qlike_arrays["GARCH(1,1)"]))
+                try:
+                    tost_result = run_tost_battery(prop_ql, riv_ql, delta=delta)
+                except Exception as exc:
+                    log.warning("[%s] TOST failed: %s", series, exc)
+            else:
+                log.warning("[%s] GARCH(1,1) not found — TOST skipped (margin is undefined)", series)
+
             for model in model_results:
                 model_results[model]["dm_qlike"] = dm_qlike.get(model, {})
                 model_results[model]["dm_mse"]   = dm_mse_res.get(model, {})
+                model_results[model]["tost"]     = tost_result.get(model, {})
         else:
-            log.warning("[%s] Proposed model '%s' not found — DM skipped", series, proposed)
+            log.warning("[%s] Proposed model '%s' not found — DM/TOST skipped", series, proposed)
 
         all_results[series] = model_results
 

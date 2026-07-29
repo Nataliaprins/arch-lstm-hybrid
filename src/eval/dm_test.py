@@ -155,6 +155,69 @@ def run_dm_battery(
 
 
 # -----------------------------------------------------------------------------
+# TOST equivalence test (Section 9.4)
+# -----------------------------------------------------------------------------
+
+def tost_test(
+    loss_model: np.ndarray,
+    loss_benchmark: np.ndarray,
+    delta: float,
+    h: Optional[int] = None,
+) -> dict:
+    """
+    Two One-Sided Tests (TOST) for practical equivalence of loss_model to
+    loss_benchmark within margin `delta`, using the same HAC (Newey-West)
+    standard error as dm_test.
+
+    d_t = loss_model_t - loss_benchmark_t
+    H0 (non-equivalence): |E[d]| > delta   vs   H1 (equivalence): |E[d]| <= delta
+
+    Implemented as two one-sided tests, combined via the standard TOST
+    rule p_tost = max(p_upper, p_lower):
+      Upper: H0_u: E[d] >= delta    vs H1_u: E[d] < delta
+      Lower: H0_l: E[d] <= -delta   vs H1_l: E[d] > -delta
+    Rejecting H0 (p_tost < alpha) is a POSITIVE claim of equivalence --
+    the opposite conclusion direction from a standard DM test, where
+    failing to reject is the "no difference" reading.
+    """
+    d = np.asarray(loss_model, dtype=float) - np.asarray(loss_benchmark, dtype=float)
+    T = len(d)
+    dbar = float(d.mean())
+    V = _hac_variance(d, h)
+    se = float(np.sqrt(V / T))
+
+    t_upper = (dbar - delta) / se
+    t_lower = (dbar + delta) / se
+
+    p_upper = float(stats.norm.cdf(t_upper))        # H0_u rejected if small
+    p_lower = float(1.0 - stats.norm.cdf(t_lower))  # H0_l rejected if small
+    p_tost = max(p_upper, p_lower)
+
+    return {
+        "d_bar": dbar,
+        "se": se,
+        "delta": delta,
+        "t_upper": t_upper, "p_upper": p_upper,
+        "t_lower": t_lower, "p_lower": p_lower,
+        "p_tost": p_tost,
+        "equivalent": bool(p_tost < 0.05),
+    }
+
+
+def run_tost_battery(
+    proposed_loss: np.ndarray,
+    rival_losses: dict[str, np.ndarray],
+    delta: float,
+    h: Optional[int] = None,
+) -> dict[str, dict]:
+    """TOST of proposed_loss vs every rival, same fixed equivalence margin delta."""
+    return {
+        name: tost_test(proposed_loss, loss, delta, h=h)
+        for name, loss in rival_losses.items()
+    }
+
+
+# -----------------------------------------------------------------------------
 # Optional helpers for NLL-based DM variants
 # -----------------------------------------------------------------------------
 

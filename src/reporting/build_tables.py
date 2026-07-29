@@ -387,20 +387,28 @@ def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> No
         for m in s if m != "LSTM-SSE-t-Student"
     })
 
-    col_tuples = [(s, stat) for s in series_list for stat in ["DM", "p(Holm)"]]
+    col_tuples = [(s, stat) for s in series_list for stat in ["DM", "p(Holm)", "TOST p"]]
     cols = pd.MultiIndex.from_tuples(col_tuples)
 
     rows = []
     for rival in all_models:
         row = []
         for series in series_list:
-            dm_res = all_results.get(series, {}).get(rival, {}).get("dm_qlike", {})
+            model_res = all_results.get(series, {}).get(rival, {})
+            dm_res = model_res.get("dm_qlike", {})
             dm_v   = dm_res.get("DM_stat")
             p_holm = dm_res.get("p_holm")
             stars  = _sig_stars(p_holm)
             dm_str = f"{dm_v:.3f}{stars}" if dm_v is not None else "—"
             ph_str = f"{p_holm:.3f}" if p_holm is not None else "—"
-            row.extend([dm_str, ph_str])
+
+            tost_res = model_res.get("tost", {})
+            p_tost = tost_res.get("p_tost")
+            if p_tost is None:
+                tost_str = "—"
+            else:
+                tost_str = f"{p_tost:.3f}" + ("\\textsuperscript{eq}" if tost_res.get("equivalent") else "")
+            row.extend([dm_str, ph_str, tost_str])
         rows.append(row)
 
     df = pd.DataFrame(rows, index=all_models, columns=cols)
@@ -409,7 +417,12 @@ def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> No
         "Loss function: QLIKE. HAC SE (Newey–West, bandwidth ⌊4(T/100)^{2/9}⌋). "
         "p(Holm): p-value after Holm–Bonferroni FWER correction per market. "
         "Positive DM stat: rival has higher loss → proposed wins. "
-        "Significance: *** p<0.01, ** p<0.05, * p<0.10 (after Holm)."
+        "Significance: *** p<0.01, ** p<0.05, * p<0.10 (after Holm). "
+        "TOST p (Section 9.4): two one-sided-tests p-value for equivalence "
+        "of QLIKE loss within margin delta = tost.delta\\_pct × GARCH(1,1)'s "
+        "own mean QLIKE (config, default 2%%), HAC SE. TOST p < 0.05 "
+        "(marked \\textsuperscript{eq}) is a POSITIVE claim of equivalence -- "
+        "the opposite reading from a DM p-value."
     )
     stem = out_dir / "Table9_DieboldMariano"
     _save_all(df, stem, "Table 9. Diebold–Mariano Tests", "tab:dm", note)

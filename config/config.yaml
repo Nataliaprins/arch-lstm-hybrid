@@ -73,6 +73,10 @@ mcs:
 dm_test:
   bandwidth: null   # null → automático: floor(4*(T/100)^(2/9))
 
+# ── TOST de equivalencia sobre QLIKE (Sección 9.4 respecificación) ──
+tost:
+  delta_pct: 0.02   # margen de equivalencia = delta_pct × pérdida QLIKE media de GARCH(1,1)
+
 # ── VaR/ES backtests ──
 var_confidence_levels: [0.99, 0.975]
 
