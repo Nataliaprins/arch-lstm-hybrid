@@ -278,6 +278,119 @@ def _get_model_init_hp(series_name: str, cfg: dict, models_dir: Path, scaler: di
     }
 
 
+def _get_nu_mode(cfg: dict) -> str:
+    """Section 8: model.nu_mode, validated. Default 'learned'."""
+    nu_mode = cfg.get("model", {}).get("nu_mode", "learned")
+    if nu_mode not in ("learned", "likelihood_search"):
+        raise ValueError(f"Unknown model.nu_mode={nu_mode!r}; expected 'learned' or 'likelihood_search'.")
+    return nu_mode
+
+
+def _select_nu_by_likelihood(
+    build_fn, X_train, y_train, X_val, y_val,
+    nu_candidates: list, seed: int, patience: int, max_epochs: int,
+) -> tuple[float, list[dict]]:
+    """
+    Section 8 "likelihood_search" mode: pick nu from `nu_candidates` by
+    validation Student-t log-likelihood -- NEVER by validation MSE or
+    the mixed hybrid loss (the failure mode Section 1's diagnosis
+    describes: nu previously selected by forecast/validation loss,
+    which is MSE-dominated for crypto pre-Section-2-normalization).
+    Returns (best_nu, per-candidate diagnostics for logging).
+    """
+    from src.losses.hybrid_student_t import student_t_nll_per_obs
+
+    candidates_log = []
+    best_nu, best_nll = None, np.inf
+    for nu in nu_candidates:
+        hp = {
+            "lstm_units": 32, "dropout": 0.1, "batch_size": 64, "learning_rate": 1e-3,
+            "window_size": X_train.shape[1], "nu": nu, "lam": 0.5,
+        }
+        try:
+            model, _ = _train_one(build_fn, hp, X_train, y_train, X_val, y_val,
+                                   seed=seed, patience=patience, max_epochs=min(max_epochs, 200))
+            u_val = model.predict(X_val, verbose=0).ravel()
+            sigma2_val = sigma2_from_log_var(u_val)
+            nll = float(np.mean(student_t_nll_per_obs(y_val, sigma2_val, nu=nu)))
+        except Exception as exc:
+            log.debug("  [nu likelihood_search] nu=%s failed: %s", nu, exc)
+            candidates_log.append({"nu": nu, "val_nll_t": None, "error": str(exc)})
+            continue
+        log.info("  [nu likelihood_search] nu=%s  val_NLL_t=%.6f", nu, nll)
+        candidates_log.append({"nu": nu, "val_nll_t": nll})
+        if nll < best_nll:
+            best_nll, best_nu = nll, nu
+
+    if best_nu is None:
+        best_nu = nu_candidates[len(nu_candidates) // 2]
+        log.warning("  [nu likelihood_search] all candidates failed; falling back to nu=%s", best_nu)
+    return best_nu, candidates_log
+
+
+def _log_nu_comparison(series_name: str, cfg: dict, nu_hp: dict,
+                        learned_nus: list[float], nu_hat_garch: float) -> tuple[float, float]:
+    """
+    Section 8: append one line to logs/nu_comparison.log with this
+    series' final nu (mean across seeds for "learned"; the single
+    selected value for "likelihood_search"), GARCH-t's own nu_hat, and
+    the training-split sample excess kurtosis (no "descriptive
+    statistics" table in this codebase corresponds to the brief's "Tabla
+    3" reference -- Table 3 here is the static model roster -- so
+    kurtosis is computed directly from data rather than read from a
+    table). Returns (nu_final, kurtosis) for the cross-series Spearman
+    correlation computed once all series are done.
+    """
+    from scipy.stats import kurtosis as _scipy_kurtosis
+
+    processed_dir = Path(cfg["paths"]["processed_data"])
+    logs_dir = Path(cfg["paths"]["logs"])
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    train_eps = pd.read_csv(
+        processed_dir / series_name / "train_eps.csv", index_col=0
+    ).iloc[:, 0].values.astype(float)
+    kurt = float(_scipy_kurtosis(train_eps, fisher=True, bias=False))
+
+    if nu_hp.get("nu_mode") == "learned":
+        nu_final = float(np.mean(learned_nus)) if learned_nus else float("nan")
+        nu_final_desc = f"mean_over_{len(learned_nus)}_seeds={nu_final:.4f}"
+    else:
+        nu_final = float(nu_hp.get("nu", float("nan")))
+        nu_final_desc = f"likelihood_search_selected={nu_final:.4f}"
+
+    line = (
+        f"{series_name}  nu_mode={nu_hp.get('nu_mode')}  nu_final={nu_final:.4f} "
+        f"({nu_final_desc})  nu_hat_garch_t={nu_hat_garch:.4f}  "
+        f"excess_kurtosis_train_eps={kurt:.4f}\n"
+    )
+    with open(logs_dir / "nu_comparison.log", "a") as fh:
+        fh.write(line)
+    log.info(line.strip())
+
+    return nu_final, kurt
+
+
+def _log_nu_kurtosis_spearman(logs_dir: Path, nu_kurt_pairs: list[tuple[str, float, float]]) -> None:
+    """Section 8: append the cross-series Spearman rank correlation between nu and kurtosis."""
+    from scipy.stats import spearmanr
+
+    valid = [(s, n, k) for s, n, k in nu_kurt_pairs if np.isfinite(n) and np.isfinite(k)]
+    if len(valid) < 2:
+        log.warning("Not enough series with valid nu/kurtosis to compute Spearman correlation.")
+        return
+    nus = [n for _, n, _ in valid]
+    kurts = [k for _, _, k in valid]
+    rho, pval = spearmanr(nus, kurts)
+    line = (
+        f"CROSS-SERIES  spearman_rho(nu, excess_kurtosis)={rho:.4f}  p={pval:.4f}  "
+        f"n_series={len(valid)}  series={[s for s, _, _ in valid]}\n"
+    )
+    with open(logs_dir / "nu_comparison.log", "a") as fh:
+        fh.write(line)
+    log.info(line.strip())
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Hyperparameter sampling
 # ──────────────────────────────────────────────────────────────────────────────
@@ -289,6 +402,7 @@ def _sample_hp(
     model_type: str,
     loss_scales: dict | None = None,
     garch_init_hp: dict | None = None,
+    nu_hp: dict | None = None,
 ) -> dict:
     """Sample one hyperparameter configuration from the search space."""
     hp = {
@@ -300,7 +414,15 @@ def _sample_hp(
         # model_type specific
     }
     if model_type in ("lstm_t_student",):
-        hp["nu"]  = int(rng.choice(search_space["nu"]))
+        # Section 8: nu is no longer sampled from the search space and
+        # scored by the mixed hybrid val_loss -- nu_hp (always provided
+        # by the caller for this model_type) fixes it via either the
+        # "learned" (trainable) or "likelihood_search" (validation
+        # Student-t NLL) path instead.
+        if nu_hp is not None:
+            hp.update(nu_hp)
+        else:
+            hp["nu"] = int(rng.choice(search_space["nu"]))
         hp["lam"] = float(rng.choice(search_space["lambda_values"]))
         if loss_scales is not None:
             hp["s_sse"] = loss_scales["s_sse"]
@@ -371,6 +493,7 @@ def _random_search(
     val_frac: float = 0.15,
     loss_scales: dict | None = None,
     garch_init_hp: dict | None = None,
+    nu_hp: dict | None = None,
 ) -> dict:
     """
     Random search with a single temporal val split.
@@ -389,7 +512,7 @@ def _random_search(
 
     for trial in range(n_trials):
         hp = _sample_hp(rng, search_space, window_size, model_type,
-                         loss_scales=loss_scales, garch_init_hp=garch_init_hp)
+                         loss_scales=loss_scales, garch_init_hp=garch_init_hp, nu_hp=nu_hp)
         seed_t = int(rng.integers(0, 2**31))
         try:
             _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
@@ -407,7 +530,7 @@ def _random_search(
         # Fallback to default
         best_hp = _sample_hp(
             np.random.default_rng(base_seed), search_space, window_size, model_type,
-            loss_scales=loss_scales, garch_init_hp=garch_init_hp,
+            loss_scales=loss_scales, garch_init_hp=garch_init_hp, nu_hp=nu_hp,
         )
     log.info("  Best hp: %s  (val_loss=%.6f)", best_hp, best_val_loss)
     return best_hp
@@ -432,12 +555,15 @@ def _multiseed_train_and_predict(
 ) -> tuple[np.ndarray, list[dict]]:
     """
     Train with S seeds. Saves weights + history per seed.
-    Returns  sigma2_per_seed (S, n_test)  and list of histories.
+    Returns  sigma2_per_seed (S, n_test),  list of histories,  and
+    (Section 8) the list of final learned nu values per seed (empty list
+    if the model doesn't expose .nu(), i.e. nu_mode != "learned").
     """
     import tensorflow as tf
 
     sigma2_per_seed = []
     histories       = []
+    learned_nus     = []
 
     for i, seed in enumerate(seeds):
         log.info("    seed %02d / %02d …", i + 1, len(seeds))
@@ -454,6 +580,8 @@ def _multiseed_train_and_predict(
         sigma2_hat = sigma2_from_log_var(u_hat)
         sigma2_per_seed.append(sigma2_hat)
         histories.append(hist)
+        if hasattr(model, "nu"):
+            learned_nus.append(float(model.nu().numpy()))
 
         # Save weights
         seed_dir = out_dir / f"seed_{i:03d}"
@@ -464,7 +592,7 @@ def _multiseed_train_and_predict(
 
         tf.keras.backend.clear_session()
 
-    return np.array(sigma2_per_seed), histories
+    return np.array(sigma2_per_seed), histories, learned_nus
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -480,8 +608,14 @@ def _run_model_series(
     out_dir:    Path,
     loss_scales: dict | None = None,
     garch_init_hp: dict | None = None,
-) -> None:
-    """End-to-end train/tune/predict for one model × series."""
+    series_name: str | None = None,
+    models_dir: Path | None = None,
+) -> tuple[str, float, float] | None:
+    """
+    End-to-end train/tune/predict for one model × series. Returns
+    (series_name, nu_final, kurtosis) for model_key=="lstm_t_student"
+    (Section 8 nu-vs-kurtosis cross-series log), else None.
+    """
     W          = _get_window_size(cfg)
     ss         = cfg["hyperparameter_search"]
     n_trials   = ss["n_trials"]
@@ -566,6 +700,24 @@ def _run_model_series(
         log.info("  [SVR-GARCH] done  fit=%.1fs", fit_secs)
         return
 
+    # Section 8: resolve nu handling for the proposed model before the
+    # hyperparameter search runs (nu is no longer part of that search).
+    nu_hp = None
+    if model_key == "lstm_t_student":
+        nu_mode = _get_nu_mode(cfg)
+        from src.models.garch_init import load_garch_params
+        nu_hat_garch = load_garch_params(series_name, models_dir)["nu"]
+        if nu_mode == "learned":
+            from src.losses.hybrid_student_t import inv_softplus
+            nu_hp = {"nu_mode": "learned", "nu_rho_init": inv_softplus(nu_hat_garch - 2.0)}
+        else:  # likelihood_search
+            best_nu, _candidates_log = _select_nu_by_likelihood(
+                build_fn, X_train, y_train, X_val, y_val,
+                nu_candidates=ss["nu"], seed=base_seed, patience=patience, max_epochs=max_epochs,
+            )
+            nu_hp = {"nu_mode": "fixed", "nu": best_nu}
+            log.info("  [%s] nu selected by validation likelihood: %s", model_key, best_nu)
+
     # Hyperparameter search
     log.info("  [%s] random search (%d trials) …", model_key, n_trials)
     t_tune = time.perf_counter()
@@ -577,13 +729,14 @@ def _run_model_series(
         val_frac=0.15,
         loss_scales=loss_scales if model_key == "lstm_t_student" else None,
         garch_init_hp=garch_init_hp if model_key == "lstm_t_student" else None,
+        nu_hp=nu_hp,
     )
     tune_secs = time.perf_counter() - t_tune
 
     # Multi-seed training
     log.info("  [%s] multi-seed training (S=%d) …", model_key, n_seeds)
     t_train = time.perf_counter()
-    sigma2_per_seed, histories = _multiseed_train_and_predict(
+    sigma2_per_seed, histories, learned_nus = _multiseed_train_and_predict(
         build_fn, best_hp,
         X_train, y_train,
         X_val, y_val,
@@ -592,6 +745,12 @@ def _run_model_series(
         out_dir=out_dir,
     )
     train_secs = time.perf_counter() - t_train
+
+    # Section 8: log the final learned/selected nu vs. GARCH-t's own nu_hat.
+    nu_kurt_result = None
+    if model_key == "lstm_t_student":
+        nu_final, kurt = _log_nu_comparison(series_name, cfg, nu_hp, learned_nus, nu_hat_garch)
+        nu_kurt_result = (series_name, nu_final, kurt)
 
     # Aggregate
     sigma2_mean = sigma2_per_seed.mean(axis=0)
@@ -620,6 +779,7 @@ def _run_model_series(
         model_key, tune_secs, train_secs,
         float(sigma2_mean.mean()), float(sigma2_std.mean()),
     )
+    return nu_kurt_result
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -776,6 +936,7 @@ def run(config_path: str) -> None:
     total_tasks = len(cfg["series"]) * (len(NEURAL_MODELS) + (1 if run_lambda_sensitivity else 0))
     task_done = 0
     run_status: list[dict] = []
+    nu_kurt_pairs: list[tuple[str, float, float]] = []
 
     log.info("Training plan: %d series × %d model-steps = %d tasks",
              len(cfg["series"]), len(NEURAL_MODELS) + (1 if run_lambda_sensitivity else 0), total_tasks)
@@ -809,13 +970,16 @@ def run(config_path: str) -> None:
             out_dir = models_dir / folder / name
             t0 = time.perf_counter()
             try:
-                _run_model_series(
+                nu_kurt = _run_model_series(
                     model_key, build_fn, data,
                     garch_sigma2_train=garch_sigma2_train,
                     cfg=cfg, out_dir=out_dir,
                     loss_scales=loss_scales,
                     garch_init_hp=garch_init_hp,
+                    series_name=name, models_dir=models_dir,
                 )
+                if nu_kurt is not None:
+                    nu_kurt_pairs.append(nu_kurt)
                 elapsed = round(time.perf_counter() - t0, 2)
                 run_status.append({
                     "series": name,
@@ -892,6 +1056,10 @@ def run(config_path: str) -> None:
             log.info("  ERROR %-9s %-20s %7.2fs  %s", r["series"], r["step"], r["seconds"], r["error"])
     else:
         log.info("All training steps finished successfully.")
+
+    # Section 8: cross-series nu-vs-kurtosis Spearman correlation.
+    if nu_kurt_pairs:
+        _log_nu_kurtosis_spearman(logs_dir, nu_kurt_pairs)
 
     log.info("══ tune_and_train complete ═══════════════════════════════════")
 

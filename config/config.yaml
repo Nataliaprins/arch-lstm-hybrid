@@ -83,8 +83,12 @@ unconditional_var_tolerance: 0.20
 loss:
   normalize: true   # false reproduce exactamente el comportamiento anterior (sin normalizar)
 
-# ── Inicialización del modelo propuesto (Sección 6 respecificación) ──
+# ── Inicialización y ν del modelo propuesto (Secciones 6 y 8 respecificación) ──
 model:
   init: glorot   # garch: inicializa la LSTM propuesta desde la solución GARCH(1,1)-t (Proposición 2)
                  # glorot: inicialización estándar de Keras (comportamiento anterior)
-                 # Requiere data.input_scaling=unconditional (ver src/models/garch_init.py)   # aviso si difiere > 20%
+                 # Requiere data.input_scaling=unconditional (ver src/models/garch_init.py)
+  nu_mode: learned   # learned: ν = 2+softplus(ρ) entrenable, ρ inicializado desde ν̂ del GARCH-t
+                     # likelihood_search: ν seleccionado por verosimilitud Student-t OOS en validación
+                     #   (nunca por MSE de validación) sobre hyperparameter_search.nu
+                     # En ambos casos ν queda fuera del espacio de búsqueda del tuner.

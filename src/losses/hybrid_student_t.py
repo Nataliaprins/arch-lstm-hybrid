@@ -42,9 +42,40 @@ import numpy as np
 _LOG_VAR_CLIP = 20.0  # clip(u_t, -20, 20) before exp() — Section 3 respecification
 
 
+def hybrid_loss_components_tf(y_true, y_pred, nu, s_sse: float = 1.0, s_t: float = 1.0):
+    """
+    Shared core: (L_sse_normalized, L_t_normalized) as TF tensors.
+
+    `nu` may be a plain float or a TF tensor (e.g. derived from a
+    trainable variable via 2 + softplus(rho) — Section 8), which is why
+    this is factored out of make_hybrid_loss: make_hybrid_loss_variable_nu
+    (Section 8, learnable ν) needs the identical L_sse/L_t computation
+    but with ν re-evaluated from a live variable on every call, not
+    baked into the closure as a fixed Python float.
+    """
+    import tensorflow as tf
+
+    eps2 = tf.cast(y_true, tf.float32)
+    u_c  = tf.clip_by_value(tf.cast(y_pred, tf.float32), -_LOG_VAR_CLIP, _LOG_VAR_CLIP)
+    sigma2 = tf.exp(u_c)
+    nu_t = tf.cast(nu, tf.float32)
+    nu_m2 = nu_t - 2.0
+
+    L_sse = tf.reduce_mean(tf.square(sigma2 - eps2)) / float(s_sse)
+
+    log_s2  = u_c   # log σ̂²_t — reuse the clipped value directly
+    ratio   = eps2 / (sigma2 * nu_m2)
+    log1p_r = tf.math.log1p(ratio)
+    L_t     = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_t + 1.0) * log1p_r) / float(s_t)
+
+    return L_sse, L_t
+
+
 def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
     """
-    Factory that returns a Keras-compatible loss function.
+    Factory that returns a Keras-compatible loss function, for a FIXED
+    (non-trainable) ν. See make_hybrid_loss_variable_nu (Section 8) for
+    the learnable-ν variant.
 
     Parameters
     ----------
@@ -67,32 +98,41 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
                  directly as log σ̂²_t rather than recomputed via
                  log(exp(u_t)))
     """
-    import tensorflow as tf
-
     nu_val   = float(max(nu, 2.01))
     lam_val  = float(np.clip(lam, 0.0, 1.0))
-    nu_m2    = nu_val - 2.0                   # ν − 2
-    s_sse_val = float(s_sse)
-    s_t_val   = float(s_t)
 
     def _loss(y_true, y_pred):
-        eps2 = tf.cast(y_true, tf.float32)
-        u_c  = tf.clip_by_value(tf.cast(y_pred, tf.float32),
-                                 -_LOG_VAR_CLIP, _LOG_VAR_CLIP)
-        sigma2 = tf.exp(u_c)
-
-        # ── L_SSE (MSE component) ────────────────────────────────────────────
-        L_sse = tf.reduce_mean(tf.square(sigma2 - eps2))
-
-        # ── L_t  (Student-t NLL component, constants dropped) ───────────────
-        log_s2    = u_c   # log σ̂²_t — reuse the clipped value directly
-        ratio     = eps2 / (sigma2 * nu_m2)
-        log1p_r   = tf.math.log1p(ratio)
-        L_t       = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_val + 1.0) * log1p_r)
-
-        return (1.0 - lam_val) * L_sse / s_sse_val + lam_val * L_t / s_t_val
+        L_sse, L_t = hybrid_loss_components_tf(y_true, y_pred, nu_val, s_sse, s_t)
+        return (1.0 - lam_val) * L_sse + lam_val * L_t
 
     _loss.__name__ = f"hybrid_t_nu{int(nu_val)}_lam{lam_val:.1f}"
+    return _loss
+
+
+def inv_softplus(y: float) -> float:
+    """rho such that softplus(rho) = y. Used to initialize a learnable nu = 2 + softplus(rho) at a target value (Section 8)."""
+    y = max(float(y), 1e-6)
+    return float(np.log(np.expm1(y)))
+
+
+def make_hybrid_loss_variable_nu(nu_fn, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
+    """
+    Section 8: hybrid loss variant for a trainable ν = 2 + softplus(ρ).
+
+    Parameters
+    ----------
+    nu_fn : callable, no args -> TF tensor (current ν, re-evaluated on
+            every call so gradients flow into whatever variable it's
+            derived from, e.g. `lambda: 2.0 + tf.nn.softplus(rho)`).
+    lam, s_sse, s_t : same as make_hybrid_loss.
+    """
+    lam_val = float(np.clip(lam, 0.0, 1.0))
+
+    def _loss(y_true, y_pred):
+        L_sse, L_t = hybrid_loss_components_tf(y_true, y_pred, nu_fn(), s_sse, s_t)
+        return (1.0 - lam_val) * L_sse + lam_val * L_t
+
+    _loss.__name__ = f"hybrid_t_learnednu_lam{lam_val:.1f}"
     return _loss
 
 

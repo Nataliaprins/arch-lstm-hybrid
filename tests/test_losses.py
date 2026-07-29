@@ -9,10 +9,12 @@ from src.losses.hybrid_student_t import (
     student_t_nll_per_obs,
     student_t_ll_total,
     make_hybrid_loss,
+    make_hybrid_loss_variable_nu,
     make_variance_mse_loss,
     sigma2_from_log_var,
     compute_loss_scales,
     effective_lambda,
+    inv_softplus,
 )
 
 RNG = np.random.default_rng(0)
@@ -171,3 +173,44 @@ def test_normalized_loss_terms_same_order_of_magnitude(series):
         f"magnitude: L_SSE/s_sse={term_sse:.4g}  |L_t|/s_t={term_t:.4g}  "
         f"ratio={ratio:.4g}"
     )
+
+
+# ── Section 8: learnable nu ─────────────────────────────────────────────────
+
+def test_inv_softplus_roundtrip():
+    for y in (0.01, 0.5, 2.0, 6.0, 50.0):
+        rho = inv_softplus(y)
+        assert abs(np.log1p(np.exp(rho)) - y) < 1e-5
+
+
+def test_make_hybrid_loss_variable_nu_matches_fixed_nu_at_same_value():
+    """A variable-nu loss evaluated at nu=5 must equal the fixed-nu loss at nu=5."""
+    import tensorflow as tf
+
+    lam, nu_val = 0.5, 5.0
+    fixed_fn = make_hybrid_loss(nu=nu_val, lam=lam)
+    variable_fn = make_hybrid_loss_variable_nu(nu_fn=lambda: tf.constant(nu_val), lam=lam)
+
+    y_true = tf.constant(EPS2[:20], dtype=tf.float32)
+    u_pred = tf.constant(np.log(SIGMA2[:20]), dtype=tf.float32)
+
+    fixed_loss = float(fixed_fn(y_true, u_pred).numpy())
+    variable_loss = float(variable_fn(y_true, u_pred).numpy())
+    assert abs(fixed_loss - variable_loss) < 1e-5
+
+
+def test_make_hybrid_loss_variable_nu_gradient_flows_to_nu():
+    """The variable-nu loss must have a non-zero gradient w.r.t. the variable nu is derived from."""
+    import tensorflow as tf
+
+    rho = tf.Variable(inv_softplus(3.0), dtype=tf.float32)
+    loss_fn = make_hybrid_loss_variable_nu(nu_fn=lambda: 2.0 + tf.nn.softplus(rho), lam=1.0)
+    y_true = tf.constant(EPS2, dtype=tf.float32)
+    u_pred = tf.constant(np.log(SIGMA2), dtype=tf.float32)
+
+    with tf.GradientTape() as tape:
+        loss = loss_fn(y_true, u_pred)
+    grad = tape.gradient(loss, rho)
+    assert grad is not None
+    assert np.isfinite(float(grad.numpy()))
+    assert float(grad.numpy()) != 0.0

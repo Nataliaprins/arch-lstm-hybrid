@@ -80,15 +80,94 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
 # build_lstm_t_student  (LSTM-SSE-t-Student — proposed model)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _make_learned_nu_model(base_model, rho_init: float, lam: float,
+                            s_sse: float = 1.0, s_t: float = 1.0, name: str = "LSTM-SSE-t-Student"):
+    """
+    Section 8: wraps a base model (predicting u_t = log σ̂²_t) with a
+    trainable, global Student-t ν = 2 + softplus(ρ), via a custom
+    train_step/test_step so ν participates in gradient descent alongside
+    the network's weights. predict()/call() are unchanged (same
+    (batch, 1) log_sigma2 output as the fixed-ν path) — only the loss
+    computation and optimizer step differ, which keeps every downstream
+    model.predict(...) call site (sigma2_from_log_var conversion, etc.)
+    working exactly as it does for the fixed-ν path.
+
+    A local class (not module-level) matching this file's lazy-TF-import
+    convention: tf.keras.Model must already be resolvable when the class
+    body evaluates.
+    """
+    import tensorflow as tf
+    from src.losses.hybrid_student_t import hybrid_loss_components_tf
+
+    class _LearnedNuModel(tf.keras.Model):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.base_model = base_model
+            self.rho = self.add_weight(
+                name="nu_rho", shape=(), dtype=tf.float32,
+                initializer=tf.keras.initializers.Constant(float(rho_init)), trainable=True,
+            )
+            self.lam_val = float(np.clip(lam, 0.0, 1.0))
+            self.s_sse_val = float(s_sse)
+            self.s_t_val = float(s_t)
+
+        def call(self, inputs, training=False):
+            return self.base_model(inputs, training=training)
+
+        def nu(self):
+            return 2.0 + tf.nn.softplus(self.rho)
+
+        def _compute_loss(self, y_true, y_pred):
+            L_sse, L_t = hybrid_loss_components_tf(y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val)
+            return (1.0 - self.lam_val) * L_sse + self.lam_val * L_t
+
+        def train_step(self, data):
+            x, y = data
+            with tf.GradientTape() as tape:
+                y_pred = self(x, training=True)
+                loss = self._compute_loss(y, y_pred)
+            trainable_vars = self.trainable_variables
+            grads = tape.gradient(loss, trainable_vars)
+            self.optimizer.apply_gradients(zip(grads, trainable_vars))
+            return {"loss": loss}
+
+        def test_step(self, data):
+            x, y = data
+            y_pred = self(x, training=False)
+            loss = self._compute_loss(y, y_pred)
+            return {"loss": loss}
+
+    return _LearnedNuModel(name=name)
+
+
 def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     """
     Same LSTM architecture as LSTM-SSE but trained with the hybrid
     (1−λ)·MSE/s_sse + λ·NLL_Student-t/s_t loss.
 
-    Extra hp keys: nu (degrees of freedom), lam (λ mixing weight),
-    s_sse / s_t (frozen normalization scales — see
-    src.losses.hybrid_student_t.compute_loss_scales; default 1.0/1.0
-    reproduces the un-normalized loss).
+    Extra hp keys: nu (degrees of freedom, used when hp["nu_mode"] is
+    not "learned"), lam (λ mixing weight), s_sse / s_t (frozen
+    normalization scales — see src.losses.hybrid_student_t.
+    compute_loss_scales; default 1.0/1.0 reproduces the un-normalized
+    loss).
+
+    hp["nu_mode"] (Section 8):
+      "fixed" (default) — ν = hp["nu"], a constant (either sampled by
+               the hyperparameter search, in which case it was
+               previously selected by validation forecast loss -- see
+               "likelihood_search" below for the corrected alternative
+               -- or set directly by the caller).
+      "learned" — ν = 2 + softplus(ρ) is a trainable model parameter,
+               ρ initialized from hp["nu_rho_init"] (the value implied
+               by this series' GARCH-t ν̂). Returns a LearnedNuModel
+               wrapping the usual functional model; predict() output is
+               unchanged.
+      Any other value of hp["nu"] set by an outer "likelihood_search"
+      selection (Section 8) is just a fixed ν chosen by OOS likelihood
+      rather than validation MSE/hybrid-loss -- from this function's
+      point of view that is identical to "fixed" (nu_mode stays "fixed"
+      or is omitted; the search happens one level up, in
+      src.tuning.tune_and_train).
 
     hp["init"] selects the LSTM weight initialization (Section 6):
       "glorot" (default) — standard Keras init, tanh activation.
@@ -112,11 +191,11 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     import tensorflow as tf
     from src.losses.hybrid_student_t import make_hybrid_loss
 
-    drop  = hp.get("dropout", 0.0)
-    lr    = hp.get("learning_rate", 1e-3)
-    nu    = hp["nu"]
-    lam   = hp["lam"]
-    W     = hp["window_size"]
+    drop     = hp.get("dropout", 0.0)
+    lr       = hp.get("learning_rate", 1e-3)
+    lam      = hp["lam"]
+    W        = hp["window_size"]
+    nu_mode  = hp.get("nu_mode", "fixed")
     s_sse = hp.get("s_sse", 1.0)
     s_t   = hp.get("s_t", 1.0)
     init  = hp.get("init", "glorot")
@@ -154,11 +233,20 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     x     = tf.keras.layers.Dropout(drop)(x)
     out   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
 
-    model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(lr),
-        loss=make_hybrid_loss(nu=nu, lam=lam, s_sse=s_sse, s_t=s_t),
-    )
+    base_model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
+
+    if nu_mode == "learned":
+        model = _make_learned_nu_model(
+            base_model, rho_init=hp["nu_rho_init"], lam=lam, s_sse=s_sse, s_t=s_t,
+            name="LSTM-SSE-t-Student",
+        )
+        model.compile(optimizer=tf.keras.optimizers.Adam(lr))
+    else:
+        model = base_model
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(lr),
+            loss=make_hybrid_loss(nu=hp["nu"], lam=lam, s_sse=s_sse, s_t=s_t),
+        )
     return model
 
 
