@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from scipy import stats
 
 logging.basicConfig(
     level=logging.INFO,
@@ -504,14 +505,24 @@ def _fmt_bool_pass_cc(p_cc: Any) -> str:
     return "Yes" if p_cc >= 0.05 else "No"
 
 
+def _n_expected(st: dict, level: str) -> str:
+    T = st.get("T")
+    if T is None:
+        return "—"
+    alpha = 1.0 - float(level)
+    return f"{T * alpha:.2f}"
+
+
 def _risk_row(m_res: dict, level: str) -> dict:
     ves = m_res.get("var_es", {}).get(level, {})
     st  = ves.get("student_t", {})
+    esbt = ves.get("es_backtest", {})
     return {
+        f"n_exc@{level}": str(st.get("n_exc", "—")),
+        f"n_exp@{level}": _n_expected(st, level),
+        f"ExcRate@{level}": _fmt(st.get("exc_rate"), decimals=4),
         f"LR_uc@{level}": _fmt(st.get("LR_uc"), decimals=4),
         f"p_uc@{level}": _fmt(st.get("p_uc"), decimals=4),
-        f"ExcRate@{level}": _fmt(st.get("exc_rate"), decimals=4),
-        f"n_exc@{level}": str(st.get("n_exc", "—")),
         f"KupiecPass@{level}": _fmt_bool_pass(st.get("p_uc")),
         f"LR_ind@{level}": _fmt(st.get("LR_ind"), decimals=4),
         f"p_ind@{level}": _fmt(st.get("p_ind"), decimals=4),
@@ -519,7 +530,9 @@ def _risk_row(m_res: dict, level: str) -> dict:
         f"p_cc@{level}": _fmt(st.get("p_cc"), decimals=4),
         f"ChristoffersenPass@{level}": _fmt_bool_pass_cc(st.get("p_cc")),
         f"VaR_t_mean@{level}": _fmt(ves.get("var_t_mean"), decimals=6),
-        f"ES_mean@{level}": _fmt(ves.get("es_mean"), decimals=6),
+        f"ES_t_mean@{level}": _fmt(ves.get("es_t_mean"), decimals=6),
+        f"ES_Z2@{level}": _fmt(esbt.get("Z2"), decimals=4),
+        f"ES_p@{level}": _fmt(esbt.get("p_value"), decimals=4),
     }
 
 
@@ -547,11 +560,16 @@ def build_table11_risk(series: str, results: dict, tlabel: str, out_dir: Path) -
 
     df = pd.DataFrame([r for _, r in rows], index=[m for m, _ in rows])
     note = (
-        "Student-t VaR backtest over OOS residuals. Kupiec uses the UC LR test "
+        "Student-t VaR backtest over OOS residuals. n_exc/n_exp: observed vs. "
+        "expected exceedances (T x tail probability). Kupiec uses the UC LR test "
         "for correct unconditional exceedance rate (H0: hit rate = tail probability). "
         "Christoffersen uses the CC LR test (UC + independence). "
         "KupiecPass = Yes when p_uc >= 0.05; ChristoffersenPass = Yes when p_cc >= 0.05. "
-        "VaR_t_mean and ES_mean are averages of model-implied risk forecasts over the OOS window."
+        "ES_Z2/ES_p (Section 9.5): Acerbi-Szekely (2014) Z2 Expected-Shortfall "
+        "backtest, HAC-free Monte Carlo p-value under the model's own posited "
+        "Student-t distribution (H0: ES correctly specified; not just an "
+        "average magnitude). VaR_t_mean/ES_t_mean are averages of model-implied "
+        "risk forecasts over the OOS window."
     )
     stem = out_dir / f"Table11_{tlabel}_Risk_{series}"
     _save_all(
@@ -563,126 +581,100 @@ def build_table11_risk(series: str, results: dict, tlabel: str, out_dir: Path) -
     )
 
 
+def _fisher_combine(p_values: list) -> tuple[float, float]:
+    """
+    Fisher's method for combining independent p-values:
+        X2 = -2 * sum(ln(p_i)) ~ chi2(2k) under H0 (all p_i uniform).
+    Returns (X2_stat, combined_p). NEVER use the arithmetic mean of
+    p-values to summarize across markets -- it has no valid null
+    distribution and can badly mislead (Section 9.5).
+    """
+    valid = [max(float(p), 1e-300) for p in p_values
+             if isinstance(p, (int, float)) and np.isfinite(p) and p > 0]
+    if not valid:
+        return float("nan"), float("nan")
+    x2 = -2.0 * sum(np.log(p) for p in valid)
+    df = 2 * len(valid)
+    combined_p = float(1.0 - stats.chi2.cdf(x2, df=df))
+    return float(x2), combined_p
+
+
 def build_table12_risk_summary(all_results: dict, series_list: list[str], out_dir: Path) -> None:
-    """Cross-market summary of Kupiec, Christoffersen, VaR and ES by model."""
+    """
+    Table 12 (fixed, Section 9.5): risk backtests disaggregated by market
+    -- one row per (series, level, model), never averaged across markets.
+    Ends with a "Combined (Fisher)" pseudo-series per (level, model) that
+    validly combines the four markets' p-values via Fisher's method
+    (replacing the previous, invalid arithmetic mean of p-values).
+    """
     all_models = sorted({m for s in all_results.values() for m in s})
     levels = ["0.99", "0.975"]
 
     rows = []
-    for model in all_models:
-        rec = {"Model": model}
-        pass_count_uc_total = 0
-        obs_uc_total = 0
-        pass_count_cc_total = 0
-        obs_cc_total = 0
-
-        for lv in levels:
-            lr_vals = []
-            p_vals = []
-            lr_ind_vals = []
-            p_ind_vals = []
-            lr_cc_vals = []
-            p_cc_vals = []
-            var_vals = []
-            es_vals = []
-            pass_count_uc_lv = 0
-            obs_uc_lv = 0
-            pass_count_cc_lv = 0
-            obs_cc_lv = 0
-
+    for lv in levels:
+        for model in all_models:
+            p_uc_list, p_ind_list, p_cc_list, es_p_list = [], [], [], []
             for series in series_list:
                 m_res = all_results.get(series, {}).get(model, {})
                 ves = m_res.get("var_es", {}).get(lv, {})
                 st = ves.get("student_t", {})
+                esbt = ves.get("es_backtest", {})
 
-                lr_uc = st.get("LR_uc")
-                p_uc = st.get("p_uc")
-                lr_ind = st.get("LR_ind")
-                p_ind = st.get("p_ind")
-                lr_cc = st.get("LR_cc")
-                p_cc = st.get("p_cc")
-                var_m = ves.get("var_t_mean")
-                es_m = ves.get("es_mean")
+                rows.append({
+                    "Series": series, "Level": lv, "Model": model,
+                    "n_exc": st.get("n_exc"),
+                    "n_exp": (float(st["T"]) * (1.0 - float(lv))) if st.get("T") is not None else None,
+                    "CoverageRate": st.get("exc_rate"),
+                    "LR_uc": st.get("LR_uc"), "p_uc": st.get("p_uc"),
+                    "LR_ind": st.get("LR_ind"), "p_ind": st.get("p_ind"),
+                    "LR_cc": st.get("LR_cc"), "p_cc": st.get("p_cc"),
+                    "ES_Z2": esbt.get("Z2"), "ES_p": esbt.get("p_value"),
+                })
+                for lst, key, src in [(p_uc_list, "p_uc", st), (p_ind_list, "p_ind", st),
+                                        (p_cc_list, "p_cc", st), (es_p_list, "p_value", esbt)]:
+                    v = src.get(key)
+                    if isinstance(v, (int, float)) and np.isfinite(v):
+                        lst.append(v)
 
-                if isinstance(lr_uc, (int, float)) and np.isfinite(lr_uc):
-                    lr_vals.append(float(lr_uc))
-                if isinstance(p_uc, (int, float)) and np.isfinite(p_uc):
-                    p_vals.append(float(p_uc))
-                    obs_uc_lv += 1
-                    if p_uc >= 0.05:
-                        pass_count_uc_lv += 1
-                if isinstance(lr_ind, (int, float)) and np.isfinite(lr_ind):
-                    lr_ind_vals.append(float(lr_ind))
-                if isinstance(p_ind, (int, float)) and np.isfinite(p_ind):
-                    p_ind_vals.append(float(p_ind))
-                if isinstance(lr_cc, (int, float)) and np.isfinite(lr_cc):
-                    lr_cc_vals.append(float(lr_cc))
-                if isinstance(p_cc, (int, float)) and np.isfinite(p_cc):
-                    p_cc_vals.append(float(p_cc))
-                    obs_cc_lv += 1
-                    if p_cc >= 0.05:
-                        pass_count_cc_lv += 1
-                if isinstance(var_m, (int, float)) and np.isfinite(var_m):
-                    var_vals.append(float(var_m))
-                if isinstance(es_m, (int, float)) and np.isfinite(es_m):
-                    es_vals.append(float(es_m))
-
-            pass_count_uc_total += pass_count_uc_lv
-            obs_uc_total += obs_uc_lv
-            pass_count_cc_total += pass_count_cc_lv
-            obs_cc_total += obs_cc_lv
-
-            rec[f"PassRate_UC@{lv}(%)"] = 100.0 * pass_count_uc_lv / obs_uc_lv if obs_uc_lv > 0 else np.nan
-            rec[f"Avg_p_uc@{lv}"] = float(np.mean(p_vals)) if p_vals else np.nan
-            rec[f"Avg_LR_uc@{lv}"] = float(np.mean(lr_vals)) if lr_vals else np.nan
-            rec[f"PassRate_CC@{lv}(%)"] = 100.0 * pass_count_cc_lv / obs_cc_lv if obs_cc_lv > 0 else np.nan
-            rec[f"Avg_p_cc@{lv}"] = float(np.mean(p_cc_vals)) if p_cc_vals else np.nan
-            rec[f"Avg_LR_cc@{lv}"] = float(np.mean(lr_cc_vals)) if lr_cc_vals else np.nan
-            rec[f"Avg_p_ind@{lv}"] = float(np.mean(p_ind_vals)) if p_ind_vals else np.nan
-            rec[f"Avg_LR_ind@{lv}"] = float(np.mean(lr_ind_vals)) if lr_ind_vals else np.nan
-            rec[f"Avg_VaR_t@{lv}"] = float(np.mean(var_vals)) if var_vals else np.nan
-            rec[f"Avg_ES@{lv}"] = float(np.mean(es_vals)) if es_vals else np.nan
-
-        rec["PassRate_UC_Global(%)"] = 100.0 * pass_count_uc_total / obs_uc_total if obs_uc_total > 0 else np.nan
-        rec["PassRate_CC_Global(%)"] = 100.0 * pass_count_cc_total / obs_cc_total if obs_cc_total > 0 else np.nan
-        rows.append(rec)
+            _, p_uc_comb = _fisher_combine(p_uc_list)
+            _, p_ind_comb = _fisher_combine(p_ind_list)
+            _, p_cc_comb = _fisher_combine(p_cc_list)
+            _, es_p_comb = _fisher_combine(es_p_list)
+            rows.append({
+                "Series": "Combined (Fisher)", "Level": lv, "Model": model,
+                "n_exc": None, "n_exp": None, "CoverageRate": None,
+                "LR_uc": None, "p_uc": p_uc_comb,
+                "LR_ind": None, "p_ind": p_ind_comb,
+                "LR_cc": None, "p_cc": p_cc_comb,
+                "ES_Z2": None, "ES_p": es_p_comb,
+            })
 
     if not rows:
         return
 
-    df_raw = pd.DataFrame(rows).set_index("Model")
-    # Higher pass rates and p-values are better; lower LR stats / VaR / ES are better.
-    sort_cols = [
-        "PassRate_CC_Global(%)",
-        "PassRate_UC_Global(%)",
-        "Avg_p_cc@0.99",
-        "Avg_p_cc@0.975",
-        "Avg_ES@0.99",
-        "Avg_ES@0.975",
-    ]
-    asc = [False, False, False, False, True, True]
-    df_raw = df_raw.sort_values(by=sort_cols, ascending=asc, na_position="last")
-
+    df_raw = pd.DataFrame(rows).set_index(["Series", "Level", "Model"])
     df = pd.DataFrame(index=df_raw.index)
+    int_cols = {"n_exc"}
     for col in df_raw.columns:
-        if "PassRate" in col:
-            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.1f}")
-        elif "Avg_p_uc" in col:
-            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.4f}")
-        elif "Avg_LR_uc" in col:
-            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.4f}")
+        if col in int_cols:
+            df[col] = df_raw[col].map(lambda x: "—" if x is None or not np.isfinite(x) else f"{int(x)}")
         else:
-            df[col] = df_raw[col].map(lambda x: "—" if not np.isfinite(x) else f"{x:.6f}")
+            df[col] = df_raw[col].map(lambda x: "—" if x is None or not np.isfinite(x) else f"{x:.4f}")
 
     note = (
-        "Cross-market averages from saved OOS risk artifacts. PassRate@level = "
-        "percentage of markets where the test does not reject at 5%%. "
-        "UC = Kupiec unconditional coverage (p_uc); CC = Christoffersen conditional coverage (p_cc). "
-        "Global rates pool both levels (0.99 and 0.975) across all markets. "
-        "Higher pass rates and p-values are preferable; lower LR statistics, Avg_VaR_t and Avg_ES indicate tighter risk forecasts."
+        "Risk backtests disaggregated by market (Section 9.5) -- never "
+        "averaged across series. n_exc/n_exp: observed vs. expected "
+        "exceedances. Kupiec (UC), Christoffersen independence (IND) and "
+        "conditional coverage (CC) LR tests, Student-t VaR. ES_Z2/ES_p: "
+        "Acerbi-Szekely (2014) Expected-Shortfall backtest (Monte Carlo "
+        "p-value). 'Combined (Fisher)' rows validly combine the four "
+        "markets' p-values via Fisher's method (X2 = -2*sum(ln(p_i)) ~ "
+        "chi2(2k)) -- NOT their arithmetic mean, which has no valid null "
+        "distribution. p >= 0.05 fails to reject the corresponding null "
+        "(correct coverage / independence / correct ES) at 5%%."
     )
-    stem = out_dir / "Table12_Risk_CrossMarket_Summary"
-    _save_all(df, stem, "Table 12. Cross-Market Risk Summary", "tab:risk_cross_market", note)
+    stem = out_dir / "Table12_risk_by_market"
+    _save_all(df, stem, "Table 12. Risk Backtests by Market", "tab:risk_by_market", note)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
