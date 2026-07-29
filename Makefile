@@ -28,11 +28,12 @@ models: $(STAMPS)/data
 	$(PYTHON) -m $(SRC).tuning.tune_and_train  --config config/config.yaml
 	@touch $(STAMPS)/models
 
-## eval: métricas OOS, DM+Holm, MCS, bootstrap, VaR/ES, sensibilidad de λ, degeneración, escalera de ablación
+## eval: métricas OOS, DM+Holm, MCS, bootstrap, VaR/ES, sensibilidad de λ, degeneración, correspondencia de compuertas, escalera de ablación
 eval: $(STAMPS)/models
-	$(PYTHON) -m $(SRC).eval.run_all_metrics      --config config/config.yaml
-	$(PYTHON) -m $(SRC).eval.degeneracy           --config config/config.yaml
-	$(PYTHON) -m $(SRC).models.ablation_ladder    --config config/config.yaml
+	$(PYTHON) -m $(SRC).eval.run_all_metrics       --config config/config.yaml
+	$(PYTHON) -m $(SRC).eval.degeneracy            --config config/config.yaml
+	$(PYTHON) -m $(SRC).eval.gate_correspondence   --config config/config.yaml
+	$(PYTHON) -m $(SRC).models.ablation_ladder     --config config/config.yaml
 	@touch $(STAMPS)/eval
 
 ## tables: emite Tablas 3–9 y 4+A1–A4 en .csv, .tex y .docx

@@ -860,6 +860,79 @@ def build_table_Ax(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Table 13 — Gate <-> GARCH parameter correspondence (Section 9.3)
+#
+# Numbering note: the brief names this "Table 11", but Table 11 (a-d, risk
+# backtests) and Table 12 (cross-market risk summary) already existed in
+# this codebase before the respecification (per project decision: keep
+# existing numbering, append brief-only new tables after it) -- so this is
+# Table 13, the next free slot.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table13_gate_correspondence(tables_dir: Path) -> None:
+    """
+    Table 13: per series, E[i_t]/E[f_t] (+ sd, correlation with eps2_t),
+    the alpha/beta Proposition-2 gate-mean mapping vs. GARCH-t's own MLE,
+    implied persistence/half-life, and the sigma2_LSTM = a + b*sigma2_GARCH
+    regression (Pearson r, b, its 95% CI, and whether that CI contains 1).
+
+    Source: outputs/tables/gate_correspondence_raw.json
+    (src.eval.gate_correspondence.run).
+    """
+    raw_path = tables_dir / "gate_correspondence_raw.json"
+    if not raw_path.exists():
+        log.warning("gate_correspondence_raw.json not found — skipping Table 13 "
+                     "(run `python -m src.eval.gate_correspondence` first).")
+        return
+    raw = json.loads(raw_path.read_text())
+
+    rows = []
+    for series, r in raw.items():
+        reg = r.get("regression") or {}
+        rows.append({
+            "Series": series,
+            "E[i_t]": _fmt(r["E_i"]["mean"], 4),
+            "sd[i_t] (across seeds)": _fmt(r["E_i"]["std"], 4),
+            "E[f_t]": _fmt(r["E_f"]["mean"], 4),
+            "sd[f_t] (across seeds)": _fmt(r["E_f"]["std"], 4),
+            "corr(i_t, eps2_t)": _fmt(r.get("corr_i_eps2"), 4),
+            "corr(f_t, eps2_t)": _fmt(r.get("corr_f_eps2"), 4),
+            "alpha_implied": _fmt(r["alpha_implied"], 4),
+            "alpha_hat (GARCH-t)": _fmt(r["alpha_garch"], 4),
+            "beta_implied": _fmt(r["beta_implied"], 4),
+            "beta_hat (GARCH-t)": _fmt(r["beta_garch"], 4),
+            "Persistence (implied)": _fmt(r["persistence_implied"], 4),
+            "Persistence (GARCH-t)": _fmt(r["persistence_garch"], 4),
+            "Half-life implied (days)": _fmt(r["half_life_implied"], 1),
+            "Half-life GARCH-t (days)": _fmt(r["half_life_garch"], 1),
+            "Pearson r(LSTM,GARCH)": _fmt(reg.get("pearson_r"), 4),
+            "b (slope)": _fmt(reg.get("b"), 4),
+            "b 95% CI": (
+                f"[{reg['b_ci_low']:.4f}, {reg['b_ci_high']:.4f}]" if reg.get("b_ci_low") is not None else "—"
+            ),
+            "CI contains 1": "Yes" if reg.get("b_ci_contains_1") else ("No" if reg else "—"),
+        })
+
+    df = pd.DataFrame(rows).set_index("Series")
+    note = (
+        "E[i_t]/E[f_t]: mean input/forget gate activation over the OOS test "
+        "windows, averaged across seeds (reconstructed forward pass -- Keras "
+        "does not expose intermediate gate activations). alpha\\_implied = "
+        "E[i\\_t], beta\\_implied = E[f\\_t] under Proposition 2's mapping "
+        "(exact only when gates are structurally constant, as in Section 7's "
+        "Rung 1; sd[i\\_t]/sd[f\\_t] measure how close the free-gate trained "
+        "model stays to that regime -- see src.eval.gate\\_correspondence "
+        "module docstring for the full derivation). "
+        "sigma2\\_LSTM = a + b*sigma2\\_GARCH (HAC SE): equivalence predicts "
+        "b~=1; 'CI contains 1' is a direct, assumption-light equivalence "
+        "check independent of the gate-mean mapping above."
+    )
+    stem = tables_dir / "Table13_gate_correspondence"
+    _save_all(df, stem, "Table 13. LSTM Gate <-> GARCH Parameter Correspondence",
+              "tab:gate_correspondence", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Table B1 — Ablation ladder (Section 7 / Proposition 2 verification)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -998,6 +1071,10 @@ def run(config_path: str) -> None:
     for idx, series in enumerate(series_list, start=1):
         log.info("Building Table A%d (estimation %s) …", idx, series)
         build_table_Ax(series, idx, models_dir, tables_dir)
+
+    # ── Table 13: gate <-> GARCH parameter correspondence (Section 9.3) ──────
+    log.info("Building Table 13 (gate correspondence) …")
+    build_table13_gate_correspondence(tables_dir)
 
     # ── Table B1: ablation ladder (Section 7 / Proposition 2) ────────────────
     log.info("Building Table B1 (ablation ladder) …")
