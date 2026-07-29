@@ -67,11 +67,17 @@ save_results <- function(out_dir, sigma2_test, params_list, fit_info) {
 }
 
 # ── MSGARCH(1,1) spec — two-state Markov, GARCH(1,1)-t per state ─────────────
+# K (number of regimes) is inferred from the length of variance.spec /
+# distribution.spec below (2 elements = 2 regimes) in the installed
+# MSGARCH version; passing switch.spec$K explicitly alongside an
+# already-per-regime spec is rejected ("you can only use the variable K
+# if you specified one regime..."). Fixed here (Section 9.7) after
+# actually running this script for the first time surfaced the error.
 make_spec <- function() {
   MSGARCH::CreateSpec(
     variance.spec  = list(model = c("sGARCH", "sGARCH")),
     distribution.spec = list(distribution = c("std", "std")),
-    switch.spec    = list(do.mix = FALSE, K = 2),
+    switch.spec    = list(do.mix = FALSE),
     constraint.spec = list(regime.const = "nu")
   )
 }
@@ -89,15 +95,22 @@ for (sc in cfg$series) {
     next
   }
 
-  train_eps <- read.csv(train_eps_f)[, 1]
-  test_eps  <- read.csv(test_eps_f)[, 1]
+  # train_eps.csv / test_eps.csv are Date,eps -- column 1 is the date
+  # string, column 2 the numeric residual. Reading column 1 fed FitML
+  # date strings ("y must be numeric"); fixed here (Section 9.7).
+  train_eps <- read.csv(train_eps_f)[, "eps"]
+  test_eps  <- read.csv(test_eps_f)[, "eps"]
 
   spec <- make_spec()
 
-  # Fit on training data
+  # Fit on training data. `do.se` is not an argument of FitML in the
+  # installed MSGARCH version (its signature is FitML(spec, data, ctr) --
+  # standard errors are computed automatically, not requested via a
+  # do.se flag). Fixed here (Section 9.7) after actually running this
+  # script surfaced "unused argument (do.se = TRUE)".
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
-    MSGARCH::FitML(spec = spec, data = train_eps, do.se = TRUE,
+    MSGARCH::FitML(spec = spec, data = train_eps,
                    ctr = list(num.init.cand = 10)),
     error = function(e) {
       msg <- paste("MSGARCH FitML failed for", series, ":", conditionMessage(e))
@@ -112,27 +125,41 @@ for (sc in cfg$series) {
 
   cat("Fit time:", round(fit_secs, 2), "s\n")
 
-  # OOS conditional variance on test data
-  # Use Predict() with 1-step ahead for each test observation
+  # OOS conditional variance on test data.
+  # FilteredVolatility is not exported in the installed MSGARCH version;
+  # the equivalent public S3 generic is Volatility(object, newdata).
+  # Fixed here (Section 9.7) after actually running this script surfaced
+  # "'FilteredVolatility' is not an exported object".
   tryCatch({
-    # Get filtered variance on full series (train + test)
+    # Get filtered volatility on full series (train + test)
     full_eps <- c(train_eps, test_eps)
-    cond_vol  <- MSGARCH::FilteredVolatility(fit, data = full_eps)
+    cond_vol  <- MSGARCH::Volatility(fit, newdata = full_eps)
     sigma2_test <- cond_vol[(length(train_eps) + 1):length(full_eps)]^2
 
-    # Parameters
-    coef_vals <- coef(fit)
+    # Parameters. coef(fit) returns NULL for this fit class in the
+    # installed MSGARCH version -- the fitted parameter vector is
+    # actually at fit$par (named numeric, e.g. alpha0_1/alpha1_1/beta_1/
+    # nu_1 per regime plus transition probabilities). Fixed here (Section
+    # 9.7) after actually running this script surfaced n_params=0 and an
+    # empty params.json.
+    coef_vals <- fit$par
     params_list <- as.list(coef_vals)
 
     # Log-likelihood
     ll_val <- tryCatch(as.numeric(logLik(fit)), error = function(e) NA)
+    n_params <- length(coef_vals)
+    n_obs    <- length(train_eps)
+    aic_val  <- if (is.na(ll_val)) NA else -2 * ll_val + 2 * n_params
+    bic_val  <- if (is.na(ll_val)) NA else -2 * ll_val + n_params * log(n_obs)
 
     fit_info <- list(
       LL_insample  = ll_val,
+      AIC          = aic_val,
+      BIC          = bic_val,
       convergence  = 0,
       fit_seconds  = round(fit_secs, 3),
-      n_obs        = length(train_eps),
-      n_params     = length(coef_vals)
+      n_obs        = n_obs,
+      n_params     = n_params
     )
 
     out_dir <- file.path(models_dir, "MSGARCH", series)

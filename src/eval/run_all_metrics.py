@@ -40,6 +40,21 @@ log = logging.getLogger(__name__)
 # nu used for LL_t and VaR (default; per-model nu stored in best_hparams.json)
 DEFAULT_NU = 5.0
 
+# Section 9.7: positive variance floor, as a fraction of the training-split
+# unconditional variance -- applied to every model's predictions before any
+# metric is computed (see the diagnostic that named SVR-GARCH, CNN-LSTM/ETH,
+# and NN-GARCH/SP500 specifically; applied uniformly here since a near-zero
+# variance forecast is an equally-bad numerical hazard from any model).
+VARIANCE_FLOOR_FACTOR = 1e-6
+
+# A model is retired from that series' tables (Section 9.7) if its QLIKE,
+# even AFTER the floor above, is still this many times the median QLIKE of
+# every other model in the same series -- i.e. the floor alone could not
+# fix it, so the model is genuinely broken there, not just numerically
+# fragile. Documented in logs/broken_models.log, never silently dropped.
+ABERRANT_QLIKE_MEDIAN_MULTIPLE = 20.0
+ABERRANT_QLIKE_ABS_FLOOR = 50.0  # also require QLIKE to be implausibly large in absolute terms
+
 # ── Forecast-encompassing pairs (candidate, benchmark) ──────────────────────
 # LSTM-SSE-t-Student is checked against both ARCH(1) (the model it is meant
 # to echo — heavy-tailed, first-order recursion) and GARCH(1,1) (the
@@ -100,10 +115,16 @@ CONSTANT_MODEL_NAME = "Constant (unconditional variance)"
 
 
 def _load_sigma2(model_dir: Path, series: str) -> np.ndarray | None:
-    for fname in ("sigma2_test.npy",):
-        p = model_dir / series / fname
-        if p.exists():
-            return np.load(p)
+    npy_path = model_dir / series / "sigma2_test.npy"
+    if npy_path.exists():
+        return np.load(npy_path)
+    # Section 9.7: R/msgarch.R saves sigma2_test.csv (a "sigma2_test"
+    # column), not .npy -- MSGARCH never appeared in any results table
+    # because this loader only ever looked for the .npy file, silently
+    # ignoring the CSV the R script had been producing all along.
+    csv_path = model_dir / series / "sigma2_test.csv"
+    if csv_path.exists():
+        return pd.read_csv(csv_path)["sigma2_test"].values.astype(float)
     return None
 
 
@@ -132,6 +153,7 @@ def run(config_path: str) -> None:
     logs_dir      = Path(cfg["paths"]["logs"])
     tables_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
+    (logs_dir / "broken_models.log").write_text("")  # Section 9.7: fresh per run, not appended across runs
 
     mcs_cfg  = cfg.get("mcs", {})
     mcs_B    = mcs_cfg.get("n_bootstrap", 10_000)
@@ -163,6 +185,13 @@ def run(config_path: str) -> None:
         sigma2_all[CONSTANT_MODEL_NAME]  = np.full(len(test_eps2), sigma2_train_uncond)
         nu_by_model[CONSTANT_MODEL_NAME] = DEFAULT_NU
 
+        # Section 9.7: positive variance floor applied to every model's
+        # predictions before any metric is computed -- guards QLIKE/LL_t/
+        # VaR against exploding when a model (SVR-GARCH in particular,
+        # also observed for CNN-LSTM/ETH and NN-GARCH/SP500) predicts a
+        # near-zero variance for a handful of observations.
+        floor = VARIANCE_FLOOR_FACTOR * sigma2_train_uncond
+
         # Econometric models
         for folder, display in {**ECON_FOLDERS}.items():
             model_dir = models_dir / folder
@@ -172,7 +201,7 @@ def run(config_path: str) -> None:
             if s2 is not None and len(s2) > 0:
                 # Align lengths
                 n = min(len(s2), len(test_eps2))
-                sigma2_all[display]  = s2[:n]
+                sigma2_all[display]  = np.maximum(s2[:n], floor)
                 nu_by_model[display] = DEFAULT_NU
                 log.info("  [%s] loaded %s: %d obs", series, display, n)
 
@@ -184,11 +213,11 @@ def run(config_path: str) -> None:
             s2 = _load_sigma2(model_dir, series)
             if s2 is not None and len(s2) > 0:
                 n = min(len(s2), len(test_eps2))
-                sigma2_all[display]  = s2[:n]
+                sigma2_all[display]  = np.maximum(s2[:n], floor)
                 nu_by_model[display] = _load_nu(model_dir, series)
                 per_seed = _load_sigma2_per_seed(model_dir, series)
                 if per_seed is not None:
-                    sigma2_per_seed[display] = per_seed[:, :n]
+                    sigma2_per_seed[display] = np.maximum(per_seed[:, :n], floor)
                 log.info("  [%s] loaded %s: %d obs", series, display, n)
 
         if "GARCH(1,1)" not in sigma2_all:
@@ -231,20 +260,27 @@ def run(config_path: str) -> None:
                     nu=nu,
                 )
 
-            # Multi-seed mean ± std
+            # Multi-seed mean ± std. Section 9.7: a model with exactly one
+            # seed (SVR-GARCH, deterministic by construction) has no
+            # seed-to-seed variation to measure -- ddof=1 std of a single
+            # observation is NaN, not "very small", so it must be flagged
+            # explicitly rather than rendered as "± nan".
             std_dict = {}
             if model in sigma2_per_seed:
                 per = sigma2_per_seed[model]  # (S, n)
-                seeds_mse = [
-                    float(np.mean((per[i] - e2)**2)) for i in range(per.shape[0])
-                ]
-                seeds_mae = [
-                    float(np.mean(np.abs(per[i] - e2))) for i in range(per.shape[0])
-                ]
-                std_dict = {
-                    "MSE_std":  round(float(np.std(seeds_mse, ddof=1)), 6),
-                    "MAE_std":  round(float(np.std(seeds_mae, ddof=1)), 6),
-                }
+                if per.shape[0] < 2:
+                    std_dict = {"deterministic": True}
+                else:
+                    seeds_mse = [
+                        float(np.mean((per[i] - e2)**2)) for i in range(per.shape[0])
+                    ]
+                    seeds_mae = [
+                        float(np.mean(np.abs(per[i] - e2))) for i in range(per.shape[0])
+                    ]
+                    std_dict = {
+                        "MSE_std":  round(float(np.std(seeds_mse, ddof=1)), 6),
+                        "MAE_std":  round(float(np.std(seeds_mae, ddof=1)), 6),
+                    }
 
             # Bootstrap CI
             try:
@@ -277,6 +313,38 @@ def run(config_path: str) -> None:
                 metrics["MSE"], metrics["RMSE"], metrics["MAE"],
                 metrics["R2"],  metrics["QLIKE"],
             )
+
+        # ── Retire models still aberrant after the variance floor (Section 9.7) ──
+        # Never silently drop -- log exactly what was removed and why.
+        finite_qlikes = {
+            m: r["metrics"]["QLIKE"] for m, r in model_results.items()
+            if r["metrics"].get("QLIKE") is not None and np.isfinite(r["metrics"]["QLIKE"])
+        }
+        if len(finite_qlikes) >= 2:
+            median_qlike = float(np.median(list(finite_qlikes.values())))
+            broken_this_series = []
+            for model, q in list(finite_qlikes.items()):
+                is_aberrant = (
+                    q > ABERRANT_QLIKE_ABS_FLOOR
+                    and q > ABERRANT_QLIKE_MEDIAN_MULTIPLE * median_qlike
+                )
+                if is_aberrant:
+                    broken_this_series.append((model, q, median_qlike))
+            for model, q, med in broken_this_series:
+                msg = (
+                    f"[{series}] {model} retired: QLIKE={q:.4f} even after the "
+                    f"{VARIANCE_FLOOR_FACTOR:.0e}xσ̄²_train variance floor "
+                    f"(> {ABERRANT_QLIKE_MEDIAN_MULTIPLE:.0f}x the series median "
+                    f"of {med:.4f} and > absolute floor {ABERRANT_QLIKE_ABS_FLOOR:.0f}) "
+                    "-- excluded from Tables 4-7/8/9/MCS for this series."
+                )
+                log.error(msg)
+                with open(logs_dir / "broken_models.log", "a") as fh:
+                    fh.write(msg + "\n")
+                del model_results[model]
+                qlike_arrays.pop(model, None)
+                mse_arrays.pop(model, None)
+                sigma2_per_seed.pop(model, None)
 
         # ── MCS (Table 4–7 last column) ──────────────────────────────────────
         if len(qlike_arrays) >= 2:

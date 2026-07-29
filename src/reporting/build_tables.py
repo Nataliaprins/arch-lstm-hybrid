@@ -287,11 +287,20 @@ def _oos_row(model: str, mdata: dict, degeneracy: dict | None = None) -> dict:
     mcs = mdata.get("mcs_90")
     mcs_str = "Yes" if mcs is True else ("No" if mcs is False else "—")
 
-    # Panel B: mean ± std format
-    std_mse = s.get("MSE_std")
-    std_mae = s.get("MAE_std")
-    mse_str = (f"{mse_v:.5f} ± {std_mse:.5f}" if std_mse else _fmt(mse_v, 5))
-    mae_str = (f"{mae_v:.5f} ± {std_mae:.5f}" if std_mae else _fmt(mae_v, 5))
+    # Panel B: mean ± std format. Section 9.7: a model with no seed-to-seed
+    # variation by construction (e.g. SVR-GARCH, S=1) is flagged
+    # "deterministic" -- ddof=1 std of a single observation is NaN, and
+    # "± nan" previously leaked straight into the table.
+    if s.get("deterministic"):
+        mse_str = f"{mse_v:.5f} (deterministic)"
+        mae_str = f"{mae_v:.5f} (deterministic)"
+    else:
+        std_mse = s.get("MSE_std")
+        std_mae = s.get("MAE_std")
+        has_std_mse = isinstance(std_mse, (int, float)) and np.isfinite(std_mse)
+        has_std_mae = isinstance(std_mae, (int, float)) and np.isfinite(std_mae)
+        mse_str = (f"{mse_v:.5f} ± {std_mse:.5f}" if has_std_mse else _fmt(mse_v, 5))
+        mae_str = (f"{mae_v:.5f} ± {std_mae:.5f}" if has_std_mae else _fmt(mae_v, 5))
 
     # Section 9.1: degeneracy flag, if available.
     deg = (degeneracy or {}).get(model)
@@ -878,13 +887,21 @@ PARAM_KEYS_BY_MODEL = {
     "GJR-GARCH(1,1)": ["omega", "alpha[1]", "gamma[1]", "beta[1]", "nu"],
     "FIGARCH(1,d,1)": ["omega", "phi[1]", "d", "beta[1]", "nu"],
     "HAR":            ["const", "beta_d", "beta_w", "beta_m"],
-    "MSGARCH(1,1)":   ["omega1", "alpha1", "beta1", "omega2", "alpha2", "beta2", "p11", "p22"],
+    # Two-regime switching GARCH(1,1)-t (regime.const="nu" -- shared df
+    # across regimes is NOT enforced by the installed MSGARCH version,
+    # each regime gets its own nu_1/nu_2). Names match fit$par exactly
+    # (Section 9.7 -- confirmed by actually running R/msgarch.R; coef(fit)
+    # returns NULL in this version, params previously came from nowhere).
+    "MSGARCH(1,1)":   ["alpha0_1", "alpha1_1", "beta_1", "nu_1",
+                        "alpha0_2", "alpha1_2", "beta_2", "nu_2",
+                        "P_1_1", "P_2_1"],
 }
 
 ALL_PARAM_ROWS = [
     "omega", "alpha[1]", "gamma[1]", "beta[1]", "phi[1]", "d",
     "const", "beta_d", "beta_w", "beta_m",
-    "omega1", "alpha1", "beta1", "omega2", "alpha2", "beta2", "p11", "p22",
+    "alpha0_1", "alpha1_1", "beta_1", "nu_1",
+    "alpha0_2", "alpha1_2", "beta_2", "nu_2", "P_1_1", "P_2_1",
     "nu",
     "LL_insample", "AIC", "BIC", "convergence", "hess_pd", "n_obs",
 ]

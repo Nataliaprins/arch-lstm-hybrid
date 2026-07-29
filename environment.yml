@@ -15,8 +15,11 @@ dependencies:
   - pyyaml=6.0.1
   - pytest=8.2.2
   - r-base=4.4.1
-  - r-msgarch
-  - r-yaml
+  - r-msgarch=2.51
+  - r-yaml=2.3.12
+  # Section 9.7: R/msgarch.R calls library(jsonlite) to write params.json/
+  # fit_info.json -- previously used but not declared here.
+  - r-jsonlite=2.0.0
   - pip:
     - yfinance==0.2.43
     - arch==7.0.0

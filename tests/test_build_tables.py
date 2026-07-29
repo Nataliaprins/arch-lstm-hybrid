@@ -138,3 +138,40 @@ def test_table8_marks_proposed_win_and_rival_win_differently(tmp_path):
     assert "textbf" in rival_loses_line and "underline" not in rival_loses_line
     assert "underline" in rival_wins_line and "textbf" not in rival_wins_line
     assert "textbf" not in inconclusive_line and "underline" not in inconclusive_line
+
+
+# ── Section 9.7: "deterministic" label instead of "± nan" ──────────────────
+
+def test_oos_row_deterministic_model_shows_label_not_nan():
+    mdata = {
+        "metrics": {"MSE": 1.23456, "RMSE": 1.0, "MAE": 4.5, "R2": 0.1,
+                     "QLIKE": 1.0, "LL_t_OOS": -1.0, "Delta_MSE": -3.0},
+        "std": {"deterministic": True},
+    }
+    row = _oos_row("SVR-GARCH", mdata)
+    assert "nan" not in row["MSE"].lower()
+    assert "deterministic" in row["MSE"]
+    assert "deterministic" in row["MAE"]
+
+
+def test_oos_row_nan_std_falls_back_to_plain_value():
+    """Defensive: even if a NaN std leaks through some other path, it must not render as '± nan'."""
+    mdata = {
+        "metrics": {"MSE": 1.23456, "RMSE": 1.0, "MAE": 4.5, "R2": 0.1,
+                     "QLIKE": 1.0, "LL_t_OOS": -1.0, "Delta_MSE": -3.0},
+        "std": {"MSE_std": float("nan"), "MAE_std": float("nan")},
+    }
+    row = _oos_row("SomeModel", mdata)
+    assert "nan" not in row["MSE"].lower()
+    assert "nan" not in row["MAE"].lower()
+
+
+def test_oos_row_normal_multiseed_still_shows_plus_minus():
+    mdata = {
+        "metrics": {"MSE": 1.23456, "RMSE": 1.0, "MAE": 4.5, "R2": 0.1,
+                     "QLIKE": 1.0, "LL_t_OOS": -1.0, "Delta_MSE": -3.0},
+        "std": {"MSE_std": 0.01, "MAE_std": 0.02},
+    }
+    row = _oos_row("LSTM-SSE", mdata)
+    assert "±" in row["MSE"]
+    assert "±" in row["MAE"]
