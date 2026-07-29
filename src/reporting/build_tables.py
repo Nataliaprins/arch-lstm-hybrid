@@ -844,6 +844,75 @@ def build_table_Ax(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Table B1 — Ablation ladder (Section 7 / Proposition 2 verification)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table_b1(tables_dir: Path) -> None:
+    """
+    Table B1: per series x rung (0-3), the recovered/estimated GARCH-like
+    parameters (rungs 0-1) or a cross-reference to Table 11's gate
+    correspondence (rungs 2-3, where alpha/beta are not directly
+    estimated parameters but gate statistics -- see
+    src.eval.gate_correspondence, Section 9.3), plus implied
+    persistence, half-life, QLIKE(OOS), LL_t(OOS).
+
+    Source: outputs/tables/ablation_ladder_raw.json
+    (src.models.ablation_ladder.run). Rungs 2-3 rows are left with
+    alpha/beta/omega/nu = '—' if that model hasn't been trained yet, or
+    if not yet cross-referenced to Table 11.
+    """
+    raw_path = tables_dir / "ablation_ladder_raw.json"
+    if not raw_path.exists():
+        log.warning("ablation_ladder_raw.json not found — skipping Table B1 "
+                     "(run `python -m src.models.ablation_ladder` first).")
+        return
+    rows_raw = json.loads(raw_path.read_text())
+
+    rung_labels = {
+        0: "0 — GARCH(1,1)-t (MLE)",
+        1: "1 — Constrained LSTM (pure Student-t MLE)",
+        2: "2 — LSTM-SSE (free gates, SSE loss)",
+        3: "3 — LSTM-SSE-t-Student (proposed)",
+    }
+
+    rows = []
+    for r in rows_raw:
+        rows.append({
+            "Series": r["series"],
+            "Rung": rung_labels.get(r["rung"], str(r["rung"])),
+            "alpha (or E[i_t], Table 11)": _fmt(r.get("alpha"), 4),
+            "beta (or E[f_t], Table 11)": _fmt(r.get("beta"), 4),
+            "omega": _fmt(r.get("omega"), 4),
+            "nu": _fmt(r.get("nu"), 3),
+            "Persistence": _fmt(r.get("persistence"), 4),
+            "Half-life (days)": _fmt(r.get("half_life_days"), 1),
+            "QLIKE (OOS)": _fmt(r.get("qlike_oos"), 4),
+            "LL_t (OOS)": _fmt(r.get("ll_t_oos"), 4),
+            "MCS member (90%)": "—" if r.get("mcs_member") is None else str(r["mcs_member"]),
+        })
+
+    df = pd.DataFrame(rows).set_index(["Series", "Rung"])
+
+    note = (
+        "Rung 0: GARCH(1,1)-t maximum likelihood (reference). Rung 1: single-unit "
+        "LSTM cell with input/forget gates held constant-but-trainable (kernels "
+        "fixed at zero), output gate identically 1, initial cell state fixed, "
+        "trained by pure Student-t log-likelihood (L-BFGS-B) from a neutral "
+        "start (alpha0=0.05, beta0=0.85) -- NOT the GARCH answer -- so recovering "
+        "alpha\\_hat, beta\\_hat is a genuine, non-circular test of Proposition 2 "
+        "(see logs/proposition2\\_check.log for the PASS/FAIL verdict per "
+        "series, tolerance 10\\% relative error). Rungs 2-3 report the "
+        "already-trained LSTM-SSE / LSTM-SSE-t-Student models as-is; their "
+        "gate statistics (analogous to alpha, beta under Proposition 2's "
+        "mapping) are in Table 11, not duplicated here. Half-life = "
+        "ln(0.5)/ln(beta). QLIKE and LL\\_t evaluated OOS on the test split."
+    )
+    stem = tables_dir / "TableB1_ablation_ladder"
+    _save_all(df, stem, "Table B1. Ablation Ladder — Proposition 2 Verification",
+              "tab:ablation_b1", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -906,6 +975,10 @@ def run(config_path: str) -> None:
     for idx, series in enumerate(series_list, start=1):
         log.info("Building Table A%d (estimation %s) …", idx, series)
         build_table_Ax(series, idx, models_dir, tables_dir)
+
+    # ── Table B1: ablation ladder (Section 7 / Proposition 2) ────────────────
+    log.info("Building Table B1 (ablation ladder) …")
+    build_table_b1(tables_dir)
 
     log.info("══ build_tables complete — outputs in %s ══", tables_dir)
 
