@@ -89,9 +89,10 @@ loss:
 
 # ── Inicialización y ν del modelo propuesto (Secciones 6 y 8 respecificación) ──
 model:
-  init: glorot   # garch: inicializa la LSTM propuesta desde la solución GARCH(1,1)-t (Proposición 2)
+  init: garch    # garch: inicializa la LSTM propuesta desde la solución GARCH(1,1)-t (Proposición 2)
                  # glorot: inicialización estándar de Keras (comportamiento anterior)
                  # Requiere data.input_scaling=unconditional (ver src/models/garch_init.py)
+                 # Fijado en "garch" para la corrida final única (criterio de terminación 12.1; ver PREREGISTRO.md)
   nu_mode: learned   # learned: ν = 2+softplus(ρ) entrenable, ρ inicializado desde ν̂ del GARCH-t
                      # likelihood_search: ν seleccionado por verosimilitud Student-t OOS en validación
                      #   (nunca por MSE de validación) sobre hyperparameter_search.nu
