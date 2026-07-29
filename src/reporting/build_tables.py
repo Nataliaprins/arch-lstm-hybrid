@@ -1,25 +1,35 @@
 """
-build_tables.py — Emit Tables 3–11 and 4+A1–A4 in .csv, .tex (booktabs), .docx.
+build_tables.py — Emit Tables 3–13, B1, 4e, and A1–A4 in .csv, .tex (booktabs), .docx.
 
 Usage:
     python -m src.reporting.build_tables --config config/config.yaml
 
 Input:  outputs/tables/raw_results.json
         outputs/tables/encompassing_results.json
+        outputs/tables/degeneracy_flags.json
+        outputs/tables/gate_correspondence_raw.json
+        outputs/tables/ablation_ladder_raw.json
         outputs/models/<model>/<series>/{params.json, fit_info.json}
 Output: outputs/tables/  *.csv  *.tex  *.docx
 
-Table numbering (paper convention)
------------------------------------
-Table 3   — Model roster (static)
-Tables 4–7 — OOS performance, one per series
-Table 8   — Cross-market Δ% summary
-Table 9   — Diebold–Mariano
-Table 10  — Forecast-Encompassing
-Table 11a–11d — Risk backtests (Kupiec + Christoffersen + VaR + ES), one per series
-Table 12  — Cross-market risk summary (Kupiec + Christoffersen + VaR + ES)
-Table 4e  — GARCH(1,1) estimation (all four series)
-Tables A1–A4 — Full estimation per series (all econometric models)
+Table numbering (paper convention; every number below is unique --
+Section 9.6 fixed a "Table 4" collision between the per-series OOS
+tables and the GARCH estimation table, which is Table 4e)
+------------------------------------------------------------------
+Table 3       — Model roster (static)
+Tables 4–7    — OOS performance, one per series (includes Panel D, the
+                constant-forecast reference row, and a DEGENERATE column)
+Table 4e      — GARCH(1,1) estimation (all four series)
+Table 8       — Cross-market Δ% summary
+Table 9       — Diebold–Mariano (+ TOST equivalence p-value column)
+Table 10      — Forecast-Encompassing
+Table 11a–11d — Risk backtests (Kupiec + Christoffersen + Acerbi-Szekely ES), one per series
+Table 12      — Risk backtests disaggregated by market (Section 9.5;
+                never averaged across series -- Fisher's method for any
+                combined figure)
+Table 13      — LSTM gate <-> GARCH parameter correspondence (Section 9.3)
+Tables A1–A4  — Full estimation per series (all econometric models)
+Table B1      — Ablation ladder / Proposition 2 verification (Section 7)
 """
 from __future__ import annotations
 
@@ -76,13 +86,28 @@ def _sig_stars(p) -> str:
     return ""
 
 
-def _save_csv(df: pd.DataFrame, path: Path) -> None:
+def _save_csv(df: pd.DataFrame, path: Path, panel_rows: set | None = None) -> None:
+    if panel_rows:
+        # A panel-divider row in CSV: keep the panel label as the index,
+        # blank every data column (rather than repeating "--- Panel A ---"
+        # as a literal cell value in the first data column).
+        df = df.copy()
+        for idx in panel_rows:
+            if idx in df.index:
+                df.loc[idx, :] = ""
     df.to_csv(path)
     log.info("Saved CSV: %s", path)
 
 
-def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str = "") -> None:
-    """Emit a booktabs LaTeX table."""
+def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str = "",
+              panel_rows: set | None = None) -> None:
+    """
+    Emit a booktabs LaTeX table. Rows whose index is in `panel_rows` are
+    rendered as a single \\multicolumn spanning divider (e.g. "Panel A"),
+    not as "Panel A & --- Panel A --- & -- & ..." repeated across every
+    column (Section 9.6).
+    """
+    panel_rows = panel_rows or set()
     n_cols  = len(df.columns)
     col_fmt = "l" + "r" * n_cols
     lines   = [
@@ -99,6 +124,9 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
     lines.append("\\midrule")
     # Rows
     for idx, row in df.iterrows():
+        if idx in panel_rows:
+            lines.append(f"\\multicolumn{{{n_cols + 1}}}{{l}}{{\\textbf{{{idx}}}}} \\\\")
+            continue
         cells = str(idx) + " & " + " & ".join(
             str(v) if v is not None else "—" for v in row
         ) + " \\\\"
@@ -115,8 +143,13 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
     log.info("Saved TEX: %s", path)
 
 
-def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "") -> None:
-    """Emit a three-line MDPI-style .docx table."""
+def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
+               panel_rows: set | None = None) -> None:
+    """
+    Emit a three-line MDPI-style .docx table. Panel-divider rows (Section
+    9.6) get their cells merged into one bold, spanning label instead of
+    repeating the panel name across every column.
+    """
     try:
         from docx import Document
         from docx.shared import Pt, Inches
@@ -125,6 +158,7 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "") -> None
         log.warning("python-docx not available; skipping .docx for %s", path)
         return
 
+    panel_rows = panel_rows or set()
     doc   = Document()
     doc.add_heading(title, level=2)
 
@@ -141,6 +175,13 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "") -> None
     # Data rows
     for i, (idx, row) in enumerate(df.iterrows()):
         cells = table.rows[i + 1].cells
+        if idx in panel_rows:
+            merged = cells[0].merge(cells[-1]) if n_cols > 1 else cells[0]
+            merged.text = str(idx)
+            for para in merged.paragraphs:
+                for run in para.runs:
+                    run.font.bold = True
+            continue
         cells[0].text = str(idx)
         for j, v in enumerate(row):
             cells[j + 1].text = str(v) if v is not None else "—"
@@ -163,11 +204,12 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "") -> None
     log.info("Saved DOCX: %s", path)
 
 
-def _save_all(df: pd.DataFrame, stem: Path, caption: str, label: str, note: str) -> None:
-    """Save CSV + TEX + DOCX."""
-    _save_csv(df, stem.with_suffix(".csv"))
-    _save_tex(df, stem.with_suffix(".tex"), caption, label, note)
-    _save_docx(df, stem.with_suffix(".docx"), caption, note)
+def _save_all(df: pd.DataFrame, stem: Path, caption: str, label: str, note: str,
+               panel_rows: set | None = None) -> None:
+    """Save CSV + TEX + DOCX. `panel_rows`: index values that are panel-divider rows (Section 9.6)."""
+    _save_csv(df, stem.with_suffix(".csv"), panel_rows)
+    _save_tex(df, stem.with_suffix(".tex"), caption, label, note, panel_rows)
+    _save_docx(df, stem.with_suffix(".docx"), caption, note, panel_rows)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -265,7 +307,13 @@ def _oos_row(model: str, mdata: dict, degeneracy: dict | None = None) -> dict:
         "R2":         _fmt(r2_v, 4),
         "QLIKE":      _fmt(ql_v, 5),
         "LL_t_OOS":   _fmt(ll_v, 4),
-        "Delta_MSE":  _fmt(dm_v, 2, pct=True) if "GARCH" not in model else "—",
+        # Delta_MSE is relative to GARCH(1,1) -- "--" only for that one
+        # reference row itself (where it would trivially be 0.00%).
+        # Previously blanked any model whose NAME merely contained the
+        # substring "GARCH" (EGARCH, GJR-GARCH, FIGARCH, SVR-GARCH,
+        # NN-GARCH all matched), silently hiding a real, already-computed
+        # Delta_MSE (Table 8 had it) from Tables 4-7.
+        "Delta_MSE":  _fmt(dm_v, 2, pct=True) if model != "GARCH(1,1)" else "—",
         "MCS_90":     mcs_str,
         "DEGENERATE": deg_str,
     }
@@ -289,9 +337,10 @@ def _best_col_mask(df_raw: pd.DataFrame, col: str) -> pd.Index:
 def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
                      degeneracy: dict | None = None) -> None:
     rows = []
+    panel_rows: set = set()
     for panel, models in PANEL_ORDER.items():
-        panel_header = {"MSE": f"--- {panel} ---"}
-        rows.append((panel, panel_header))
+        rows.append((panel, {}))   # panel-divider row (Section 9.6: rendered as \multicolumn, not repeated text)
+        panel_rows.add(panel)
         for m in models:
             if m in results:
                 rows.append((m, _oos_row(m, results[m], degeneracy)))
@@ -301,14 +350,16 @@ def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
         index=[n for n, _ in rows],
     ).fillna("—")
 
-    # Bold best values per column
+    # Bold best values per column (skip panel-divider rows)
     for col in ["MSE", "RMSE", "MAE", "R2", "QLIKE", "LL_t_OOS"]:
         if col not in df_raw.columns:
             continue
         best_idx = _best_col_mask(df_raw, col)
         for idx in best_idx:
+            if idx in panel_rows:
+                continue
             v = df_raw.at[idx, col]
-            if isinstance(v, str) and "---" not in v:
+            if isinstance(v, str):
                 df_raw.at[idx, col] = f"\\textbf{{{v}}}"
 
     note = (
@@ -333,6 +384,7 @@ def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
         f"Table {tnum}. OOS Forecasting Performance — {series}",
         f"tab:oos_{series.lower()}",
         note,
+        panel_rows=panel_rows,
     )
 
 
@@ -353,25 +405,47 @@ def build_table8(all_results: dict, series_list: list[str], out_dir: Path) -> No
             m_res = all_results.get(series, {}).get(model, {})
             metrics = m_res.get("metrics", {})
             dm_holm  = m_res.get("dm_qlike", {})
-            bold = dm_holm.get("reject", False)
+            reject   = dm_holm.get("reject", False)
+            dm_stat  = dm_holm.get("DM_stat")
 
             dm_pct  = metrics.get("Delta_MSE")
             mae_pct = metrics.get("Delta_MAE")
 
             def _cell(v):
+                # GARCH(1,1) is the reference every Delta_% is computed
+                # against, so its own row is trivially 0.00% -- shown as
+                # "--", not "+0.00" (previously this special case was
+                # documented in the note but never implemented).
+                if model == "GARCH(1,1)":
+                    return "—"
                 if v is None or (isinstance(v, float) and not np.isfinite(v)):
                     return "—"
                 s = f"{v:+.2f}"
-                return f"\\textbf{{{s}}}" if bold else s
+                if not reject or dm_stat is None:
+                    return s
+                # Section 9.6: two distinct markers by WHO wins the DM test
+                # (src.eval.dm_test: positive DM_stat -> proposed wins).
+                # Previously this bolded the rival's cell whenever DM was
+                # significant AT ALL, including when the rival won --
+                # reading as the opposite of what bold is supposed to mean.
+                if dm_stat > 0:
+                    return f"\\textbf{{{s}}}"     # proposed significantly better than this rival
+                else:
+                    return f"\\underline{{{s}}}"  # rival significantly better than proposed
 
             row.extend([_cell(dm_pct), _cell(mae_pct)])
         rows.append(row)
 
     df = pd.DataFrame(rows, index=all_models, columns=cols)
     note = (
-        "Percentage change relative to GARCH(1,1) (reference row marked —). "
-        "Bold = statistically significant at 5%% after Holm–Bonferroni correction "
-        "on QLIKE-based DM test. Negative = improvement over GARCH(1,1)."
+        "Percentage change relative to GARCH(1,1) (reference row shown as "
+        "--). \\textbf{Bold} = proposed model significantly beats this "
+        "rival (positive DM stat, QLIKE, Holm-corrected p<0.05); "
+        "\\underline{underlined} = this rival significantly beats the "
+        "proposed model (negative DM stat, same test) -- these are "
+        "opposite conclusions and were previously conflated under a single "
+        "bold marker. Unmarked = not statistically significant. "
+        "Negative Delta_%% = improvement over GARCH(1,1)."
     )
     stem = out_dir / "Table8_CrossMarket_Summary"
     _save_all(df, stem, "Table 8. Cross-Market OOS Performance Summary",
@@ -763,6 +837,7 @@ def build_table4_estimation(
 
     df = pd.DataFrame(rows).set_index("_label")
     df.index.name = "Parameter"
+    panel_rows = {label for label, key in PARAM_ROWS if key is None}
 
     note = (
         "GARCH(1,1) with Student-t innovations estimated by MLE. "
@@ -772,9 +847,14 @@ def build_table4_estimation(
         f"(warning if deviation > {cfg.get('unconditional_var_tolerance', 0.20):.0%}). "
         "Half-life = ln(0.5)/ln(α₁+β₁). *** p<0.01, ** p<0.05, * p<0.10."
     )
-    stem = out_dir / "Table4_GARCH11_Estimation"
-    _save_all(df, stem, "Table 4. GARCH(1,1) Parameter Estimates",
-              "tab:garch_est", note)
+    # Numbering note (Section 9.6): this is "Table 4e" (per the module
+    # docstring), a distinct sub-table alongside the four per-series OOS
+    # tables that are ALSO numbered 4-7 (build_table_oos). The caption
+    # previously said "Table 4" verbatim, colliding with Table 4
+    # (OOS Forecasting Performance -- BTC-USD) -- fixed here.
+    stem = out_dir / "Table4e_GARCH11_Estimation"
+    _save_all(df, stem, "Table 4e. GARCH(1,1) Parameter Estimates",
+              "tab:garch_est_4e", note, panel_rows=panel_rows)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1064,8 +1144,8 @@ def run(config_path: str) -> None:
         log.info("Building Table 11%s (Risk %s) …", tlabel, series)
         build_table11_risk(series, all_results.get(series, {}), tlabel=tlabel, out_dir=tables_dir)
 
-    # ── Table 12: cross-market risk summary ──────────────────────────────────
-    log.info("Building Table 12 (Risk cross-market summary) …")
+    # ── Table 12: risk backtests by market (Section 9.5) ──────────────────────
+    log.info("Building Table 12 (risk backtests by market) …")
     build_table12_risk_summary(all_results, series_list, tables_dir)
 
     # ── Table 4e: GARCH estimation ────────────────────────────────────────────
