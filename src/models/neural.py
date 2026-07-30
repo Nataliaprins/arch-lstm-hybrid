@@ -120,6 +120,25 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             self.lam_val = float(np.clip(lam, 0.0, 1.0))
             self.s_sse_val = float(s_sse)
             self.s_t_val = float(s_t)
+            # Keras 3's base Model.compile() creates its own internal
+            # loss Mean tracker (present in self.metrics) regardless of
+            # whether compile(loss=...) is passed. Our train_step/
+            # test_step never touched it, so it stayed at its reset
+            # value 0.0 forever -- and Keras 3's fit()/evaluate() epoch
+            # logs are derived from self.metrics, NOT from whatever dict
+            # a custom train_step returns, so history.history["loss"]/
+            # ["val_loss"] (and therefore EarlyStopping, which monitors
+            # "val_loss") silently saw a constant 0.0 every epoch despite
+            # real, non-zero gradient updates actually happening. Fixed
+            # per Keras's documented custom-train-step pattern: own the
+            # tracker explicitly, update it with the real loss, and
+            # expose ONLY it via the metrics property so Keras's
+            # automatic per-epoch reset/reporting uses our real value.
+            self.loss_tracker = tf.keras.metrics.Mean(name="loss")
+
+        @property
+        def metrics(self):
+            return [self.loss_tracker]
 
         def call(self, inputs, training=False):
             return self.base_model(inputs, training=training)
@@ -139,13 +158,15 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             trainable_vars = self.trainable_variables
             grads = tape.gradient(loss, trainable_vars)
             self.optimizer.apply_gradients(zip(grads, trainable_vars))
-            return {"loss": loss}
+            self.loss_tracker.update_state(loss)
+            return {"loss": self.loss_tracker.result()}
 
         def test_step(self, data):
             x, y = data
             y_pred = self(x, training=False)
             loss = self._compute_loss(y, y_pred)
-            return {"loss": loss}
+            self.loss_tracker.update_state(loss)
+            return {"loss": self.loss_tracker.result()}
 
     return _LearnedNuModel(name=name)
 
