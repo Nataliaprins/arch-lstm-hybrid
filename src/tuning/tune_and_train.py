@@ -330,6 +330,16 @@ def _get_nu_mode(cfg: dict) -> str:
     return nu_mode
 
 
+def _full_batch_enabled(cfg: dict, model_key: str) -> bool:
+    """
+    True iff model.full_batch_training is set AND this is the proposed
+    model. Opt-in and scoped to lstm_t_student only -- must never affect
+    the other 7 architectures' shared hyperparameter_search.batch_size
+    search space.
+    """
+    return model_key == "lstm_t_student" and bool(cfg.get("model", {}).get("full_batch_training", False))
+
+
 def _select_nu_by_likelihood(
     build_fn, X_train, y_train, X_val, y_val,
     nu_candidates: list, seed: int, patience: int, max_epochs: int,
@@ -489,15 +499,24 @@ def _train_one(
     seed:     int,
     patience: int,
     max_epochs: int,
+    full_batch: bool = False,
 ) -> tuple[object, dict]:
     """
     Train a single Keras model. Returns (model, history_dict).
+
+    full_batch: if True, ignore hp["batch_size"] and set
+    batch_size=len(X_train) -- one gradient update per epoch over the
+    ENTIRE training set, closer to classical (deterministic) maximum
+    likelihood than mini-batch SGD (see tests/test_full_batch_training.py
+    and the discussion in _run_model_series). Requires many more epochs
+    to reach the same number of gradient updates as mini-batch training.
     """
     import tensorflow as tf
     from src.models.neural import set_seeds
     set_seeds(seed)
 
     model = build_fn(hp)
+    batch_size = len(X_train) if full_batch else hp["batch_size"]
     es = tf.keras.callbacks.EarlyStopping(
         monitor="val_loss", patience=patience,
         restore_best_weights=True, verbose=0,
@@ -506,7 +525,7 @@ def _train_one(
         X_train, y_train,
         validation_data=(X_val, y_val),
         epochs=max_epochs,
-        batch_size=hp["batch_size"],
+        batch_size=batch_size,
         callbacks=[es],
         verbose=0,
         shuffle=False,   # time-series: no shuffling
@@ -536,10 +555,18 @@ def _random_search(
     val_frac: float = 0.15,
     loss_scales: dict | None = None,
     nu_hp: dict | None = None,
+    full_batch: bool = False,
+    search_epochs_cap: int = 200,
 ) -> dict:
     """
     Random search with a single temporal val split.
     Returns the best hyperparameter dict.
+
+    search_epochs_cap: each trial is capped at min(max_epochs,
+    search_epochs_cap) to keep n_trials trials fast. With full_batch=True
+    (one gradient step per epoch instead of ~n/batch_size), this cap
+    needs to be much higher than the mini-batch default of 200 or trials
+    won't get enough gradient steps to be a meaningful comparison.
     """
     rng = np.random.default_rng(base_seed)
 
@@ -559,7 +586,8 @@ def _random_search(
         try:
             _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
                                   seed=seed_t, patience=patience,
-                                  max_epochs=min(max_epochs, 200))
+                                  max_epochs=min(max_epochs, search_epochs_cap),
+                                  full_batch=full_batch)
             val_loss = min(hist["val_loss"])
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -595,6 +623,7 @@ def _multiseed_train_and_predict(
     max_epochs: int,
     out_dir:   Path,
     output_is_log_variance: bool = True,
+    full_batch: bool = False,
 ) -> tuple[np.ndarray, list[dict]]:
     """
     Train with S seeds. Saves weights + history per seed.
@@ -622,6 +651,7 @@ def _multiseed_train_and_predict(
             X_tr_full, y_tr_full,
             X_val, y_val,
             seed=seed, patience=patience, max_epochs=max_epochs,
+            full_batch=full_batch,
         )
         # Predict OOS.
         u_hat = model.predict(X_test_w, verbose=0).ravel()
@@ -674,6 +704,23 @@ def _run_model_series(
     base_seed  = cfg["seed"]
     n_seeds    = cfg["n_seeds"]
     seeds      = _derive_seeds(base_seed, n_seeds)
+
+    # Full-batch training (opt-in, proposed model only via
+    # model.full_batch_training -- does not affect the other 7
+    # architectures' shared batch_size search space): one gradient
+    # update per epoch over the ENTIRE training set, closer to classical
+    # deterministic maximum likelihood than mini-batch SGD. Needs a much
+    # larger epoch budget (and patience) to reach a comparable number of
+    # gradient updates -- see build_lstm_t_student's docstring and
+    # tests/test_full_batch_training.py.
+    full_batch = _full_batch_enabled(cfg, model_key)
+    if full_batch:
+        max_epochs = ss.get("full_batch_max_epochs", max_epochs)
+        patience   = ss.get("full_batch_patience", patience)
+        log.info(
+            "  [%s] full_batch_training=True -> batch_size=n_train, max_epochs=%d, patience=%d",
+            model_key, max_epochs, patience,
+        )
 
     train_eps2 = data["train_eps2"]
     val_eps2   = data["val_eps2"]
@@ -787,6 +834,8 @@ def _run_model_series(
         val_frac=0.15,
         loss_scales=loss_scales if model_key == "lstm_t_student" else None,
         nu_hp=nu_hp,
+        full_batch=full_batch,
+        search_epochs_cap=(max_epochs if full_batch else 200),
     )
     tune_secs = time.perf_counter() - t_tune
 
@@ -801,6 +850,7 @@ def _run_model_series(
         patience=patience, max_epochs=max_epochs,
         out_dir=out_dir,
         output_is_log_variance=(model_key != "lstm_t_student"),
+        full_batch=full_batch,
     )
     train_secs = time.perf_counter() - t_train
 
