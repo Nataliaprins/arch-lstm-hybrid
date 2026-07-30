@@ -2,7 +2,10 @@
 import numpy as np
 import pytest
 
-from src.eval.gate_correspondence import lstm_forward_gates, regression_lstm_vs_garch, _sigmoid
+from src.eval.gate_correspondence import (
+    lstm_forward_gates, regression_lstm_vs_garch, _sigmoid,
+    compute_gate_statistics_one_seed,
+)
 
 
 def test_sigmoid_basic():
@@ -84,3 +87,41 @@ def test_regression_lstm_vs_garch_unrelated_series():
 
     res = regression_lstm_vs_garch(sigma2_lstm, sigma2_garch)
     assert abs(res["pearson_r"]) < 0.3
+
+
+def test_compute_gate_statistics_one_seed_learned_nu_garch_init(tmp_path):
+    """
+    Reproduces the real run-time failure: with the frozen config's
+    nu_mode="learned" + init="garch", build_lstm_t_student returns a
+    _LearnedNuModel (a tf.keras.Model subclass), which Keras only
+    considers "built" after a first forward call. Loading weights into
+    an unbuilt subclassed model raises "You are loading weights into a
+    model that has not yet been built." This test builds a tiny model,
+    saves weights the same way _multiseed_train_and_predict does
+    (model.save_weights after at least one call), then verifies gate
+    extraction on a *freshly constructed, never-called* model succeeds.
+    """
+    import tensorflow as tf
+    from src.models.neural import build_lstm_t_student
+
+    hp = {
+        "lstm_units": 1, "dropout": 0.0, "batch_size": 8,
+        "learning_rate": 1e-3, "window_size": 5,
+        "nu_mode": "learned", "nu_rho_init": 1.0, "lam": 0.5,
+        "s_sse": 1.0, "s_t": 1.0,
+        "init": "garch", "garch_alpha": 0.1, "garch_beta": 0.85,
+        "garch_omega": 0.05, "garch_sigma2_train": 1.0,
+    }
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(16, hp["window_size"], 1)).astype("float32")
+    y = np.abs(rng.normal(size=16)).astype("float32")
+
+    trained = build_lstm_t_student(hp)
+    trained.fit(X, y, epochs=1, batch_size=hp["batch_size"], verbose=0)
+    weights_path = tmp_path / "weights.weights.h5"
+    trained.save_weights(str(weights_path))
+
+    eps2_test = np.abs(rng.normal(size=16)).astype("float32")
+    stats = compute_gate_statistics_one_seed(hp, weights_path, X, eps2_test)
+    assert np.isfinite(stats["E_i"])
+    assert np.isfinite(stats["E_f"])

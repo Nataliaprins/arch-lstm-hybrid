@@ -118,6 +118,13 @@ def compute_gate_statistics_one_seed(
     from src.models.neural import build_lstm_t_student
 
     model = build_lstm_t_student(hp)
+    # Section 8's nu_mode="learned" wraps the base functional model in a
+    # tf.keras.Model subclass (_LearnedNuModel). Subclassed models are only
+    # "built" (and therefore loadable) after their first forward call --
+    # unlike the functional base_model, which is already built at
+    # construction time via its explicit Input layer.
+    if not model.built:
+        model(X_test[:1])
     model.load_weights(str(weights_path))
     layer = _find_lstm_layer(model)
     kernel, recurrent_kernel, bias = layer.get_weights()
