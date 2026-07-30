@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from src.losses.hybrid_student_t import sigma2_from_log_var
+from src.losses.hybrid_student_t import sigma2_from_log_var, sigma2_from_direct_output
 from src.data.scaling import transform as scaling_transform
 
 logging.basicConfig(
@@ -322,36 +322,6 @@ def _compute_and_log_loss_scales(
     return scales
 
 
-def _get_model_init_hp(series_name: str, cfg: dict, models_dir: Path, scaler: dict) -> dict | None:
-    """
-    Section 6: if model.init=="garch", load this series' already-estimated
-    GARCH(1,1)-t params and return the hp keys build_lstm_t_student needs
-    to initialize from them. Returns None for the default "glorot" init.
-    """
-    init = cfg.get("model", {}).get("init", "glorot")
-    if init not in ("glorot", "garch"):
-        raise ValueError(f"Unknown model.init={init!r}; expected 'glorot' or 'garch'.")
-    if init != "garch":
-        return None
-
-    if scaler.get("method") != "unconditional":
-        raise ValueError(
-            "model.init='garch' requires data.input_scaling='unconditional' "
-            f"(got {scaler.get('method')!r}) -- the GARCH weight mapping in "
-            "src.models.garch_init assumes x_t = eps2_t / sigma2_train."
-        )
-
-    from src.models.garch_init import load_garch_params
-    params = load_garch_params(series_name, models_dir)
-    return {
-        "init": "garch",
-        "garch_alpha": params["alpha"],
-        "garch_beta": params["beta"],
-        "garch_omega": params["omega"],
-        "garch_sigma2_train": scaler["sigma2_train"],
-    }
-
-
 def _get_nu_mode(cfg: dict) -> str:
     """Section 8: model.nu_mode, validated. Default 'learned'."""
     nu_mode = cfg.get("model", {}).get("nu_mode", "learned")
@@ -385,7 +355,9 @@ def _select_nu_by_likelihood(
             model, _ = _train_one(build_fn, hp, X_train, y_train, X_val, y_val,
                                    seed=seed, patience=patience, max_epochs=min(max_epochs, 200))
             u_val = model.predict(X_val, verbose=0).ravel()
-            sigma2_val = sigma2_from_log_var(u_val)
+            # build_fn here is always build_lstm_t_student, whose raw output
+            # IS sigma2_t directly (activation="exponential") -- no exp().
+            sigma2_val = sigma2_from_direct_output(u_val)
             nll = float(np.mean(student_t_nll_per_obs(y_val, sigma2_val, nu=nu)))
         except Exception as exc:
             log.debug("  [nu likelihood_search] nu=%s failed: %s", nu, exc)
@@ -475,7 +447,6 @@ def _sample_hp(
     window_size: int,
     model_type: str,
     loss_scales: dict | None = None,
-    garch_init_hp: dict | None = None,
     nu_hp: dict | None = None,
 ) -> dict:
     """Sample one hyperparameter configuration from the search space."""
@@ -501,8 +472,6 @@ def _sample_hp(
         if loss_scales is not None:
             hp["s_sse"] = loss_scales["s_sse"]
             hp["s_t"]   = loss_scales["s_t"]
-        if garch_init_hp is not None:
-            hp.update(garch_init_hp)
     return hp
 
 
@@ -566,7 +535,6 @@ def _random_search(
     model_type: str,
     val_frac: float = 0.15,
     loss_scales: dict | None = None,
-    garch_init_hp: dict | None = None,
     nu_hp: dict | None = None,
 ) -> dict:
     """
@@ -586,7 +554,7 @@ def _random_search(
 
     for trial in range(n_trials):
         hp = _sample_hp(rng, search_space, window_size, model_type,
-                         loss_scales=loss_scales, garch_init_hp=garch_init_hp, nu_hp=nu_hp)
+                         loss_scales=loss_scales, nu_hp=nu_hp)
         seed_t = int(rng.integers(0, 2**31))
         try:
             _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
@@ -604,7 +572,7 @@ def _random_search(
         # Fallback to default
         best_hp = _sample_hp(
             np.random.default_rng(base_seed), search_space, window_size, model_type,
-            loss_scales=loss_scales, garch_init_hp=garch_init_hp, nu_hp=nu_hp,
+            loss_scales=loss_scales, nu_hp=nu_hp,
         )
     log.info("  Best hp: %s  (val_loss=%.6f)", best_hp, best_val_loss)
     return best_hp
@@ -626,12 +594,18 @@ def _multiseed_train_and_predict(
     patience:  int,
     max_epochs: int,
     out_dir:   Path,
+    output_is_log_variance: bool = True,
 ) -> tuple[np.ndarray, list[dict]]:
     """
     Train with S seeds. Saves weights + history per seed.
     Returns  sigma2_per_seed (S, n_test),  list of histories,  and
     (Section 8) the list of final learned nu values per seed (empty list
     if the model doesn't expose .nu(), i.e. nu_mode != "learned").
+
+    output_is_log_variance: True for every architecture except
+    build_lstm_t_student (Section 3's u_t=log(sigma2_t)-no-activation
+    convention); False for build_lstm_t_student, whose output layer
+    already emits sigma2_t directly (activation="exponential").
     """
     import tensorflow as tf
 
@@ -649,9 +623,12 @@ def _multiseed_train_and_predict(
             X_val, y_val,
             seed=seed, patience=patience, max_epochs=max_epochs,
         )
-        # Predict OOS. Model output is u_t = log sigma2_t (Section 3); convert.
+        # Predict OOS.
         u_hat = model.predict(X_test_w, verbose=0).ravel()
-        sigma2_hat = sigma2_from_log_var(u_hat)
+        sigma2_hat = (
+            sigma2_from_log_var(u_hat) if output_is_log_variance
+            else sigma2_from_direct_output(u_hat)
+        )
         sigma2_per_seed.append(sigma2_hat)
         histories.append(hist)
         if hasattr(model, "nu"):
@@ -681,7 +658,6 @@ def _run_model_series(
     cfg:        dict,
     out_dir:    Path,
     loss_scales: dict | None = None,
-    garch_init_hp: dict | None = None,
     series_name: str | None = None,
     models_dir: Path | None = None,
 ) -> tuple[str, float, float] | None:
@@ -777,13 +753,17 @@ def _run_model_series(
     # Section 8: resolve nu handling for the proposed model before the
     # hyperparameter search runs (nu is no longer part of that search).
     nu_hp = None
+    nu_hat_garch = None
     if model_key == "lstm_t_student":
         nu_mode = _get_nu_mode(cfg)
-        from src.models.garch_init import load_garch_params
-        nu_hat_garch = load_garch_params(series_name, models_dir)["nu"]
         if nu_mode == "learned":
             from src.losses.hybrid_student_t import inv_softplus
-            nu_hp = {"nu_mode": "learned", "nu_rho_init": inv_softplus(nu_hat_garch - 2.0)}
+            # Fixed, GARCH-independent starting point (this model uses no
+            # GARCH parameters anywhere -- see build_lstm_t_student's
+            # docstring): nu starts at a neutral prior of 5.0, the same
+            # reference value compute_loss_scales uses for its own nu_ref,
+            # not derived from this series' own GARCH-t fit.
+            nu_hp = {"nu_mode": "learned", "nu_rho_init": inv_softplus(5.0 - 2.0)}
         else:  # likelihood_search
             best_nu, _candidates_log = _select_nu_by_likelihood(
                 build_fn, X_train, y_train, X_val, y_val,
@@ -791,6 +771,10 @@ def _run_model_series(
             )
             nu_hp = {"nu_mode": "fixed", "nu": best_nu}
             log.info("  [%s] nu selected by validation likelihood: %s", model_key, best_nu)
+        # Loaded only for the post-hoc nu-vs-GARCH-t comparison log below
+        # (_log_nu_comparison) -- never used to seed or influence training.
+        from src.models.garch_init import load_garch_params
+        nu_hat_garch = load_garch_params(series_name, models_dir)["nu"]
 
     # Hyperparameter search
     log.info("  [%s] random search (%d trials) …", model_key, n_trials)
@@ -802,7 +786,6 @@ def _run_model_series(
         base_seed=base_seed, window_size=W, model_type=model_key,
         val_frac=0.15,
         loss_scales=loss_scales if model_key == "lstm_t_student" else None,
-        garch_init_hp=garch_init_hp if model_key == "lstm_t_student" else None,
         nu_hp=nu_hp,
     )
     tune_secs = time.perf_counter() - t_tune
@@ -817,6 +800,7 @@ def _run_model_series(
         X_test_w, seeds,
         patience=patience, max_epochs=max_epochs,
         out_dir=out_dir,
+        output_is_log_variance=(model_key != "lstm_t_student"),
     )
     train_secs = time.perf_counter() - t_train
 
@@ -933,7 +917,7 @@ def _lambda_sensitivity(
                       epochs=max_epochs, batch_size=hp["batch_size"],
                       callbacks=[es], verbose=0, shuffle=False)
                 u_pred = m.predict(X_test_w, verbose=0).ravel()
-                pred = sigma2_from_log_var(u_pred)
+                pred = sigma2_from_direct_output(u_pred)
                 preds_all.append(pred)
                 tf.keras.backend.clear_session()
             except Exception as exc:
@@ -1059,7 +1043,6 @@ def run(config_path: str) -> None:
         loss_scales = _compute_and_log_loss_scales(
             name, data["train_eps2"], cfg, models_dir, logs_dir,
         )
-        garch_init_hp = _get_model_init_hp(name, cfg, models_dir, data["scaler"])
 
         # Load GARCH sigma2_train for NN-GARCH
         garch_dir = models_dir / "GARCH11" / name
@@ -1098,7 +1081,6 @@ def run(config_path: str) -> None:
                     garch_sigma2_train=garch_sigma2_train,
                     cfg=cfg, out_dir=out_dir,
                     loss_scales=loss_scales,
-                    garch_init_hp=garch_init_hp,
                     series_name=name, models_dir=models_dir,
                 )
                 if nu_kurt is not None:

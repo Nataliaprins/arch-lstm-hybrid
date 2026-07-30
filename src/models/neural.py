@@ -18,15 +18,24 @@ Models implemented
   build_nn_garch          — dense net augmenting the GARCH recursion
   SVRGARCHModel           — scikit-learn SVR (sklearn, not Keras)
 
-All Keras builders share the same output reparametrization (Section 3):
-the output layer has NO activation and emits u_t = log σ̂²_t directly.
-σ̂²_t is never computed inside the model graph; it is derived only where
-needed — in the training loss (src.losses.hybrid_student_t.make_hybrid_loss
-/ make_variance_mse_loss) and, at inference time, via
-src.losses.hybrid_student_t.sigma2_from_log_var(model.predict(...)) —
-as exp(clip(u_t, -20, 20)). The previous softplus-on-variance activation
-was poorly conditioned when the target spans multiple orders of magnitude
-(the case for crypto), which this reparametrization avoids.
+Every builder EXCEPT build_lstm_t_student shares the same output
+reparametrization (Section 3): the output layer has NO activation and
+emits u_t = log σ̂²_t directly. σ̂²_t is never computed inside the model
+graph; it is derived only where needed — in the training loss
+(src.losses.hybrid_student_t.make_variance_mse_loss) and, at inference
+time, via src.losses.hybrid_student_t.sigma2_from_log_var(model.predict(...))
+— as exp(clip(u_t, -20, 20)). The previous softplus-on-variance
+activation was poorly conditioned when the target spans multiple orders
+of magnitude (the case for crypto), which this reparametrization avoids.
+
+build_lstm_t_student (the proposed model) instead uses
+activation="exponential" directly on its output layer, so σ̂²_t > 0 is
+guaranteed by the architecture rather than by a downstream transform;
+its raw predict() output IS σ̂²_t (see
+src.losses.hybrid_student_t.sigma2_from_direct_output /
+hybrid_loss_components_sigma2_tf / make_hybrid_loss_sigma2 /
+make_hybrid_loss_variable_nu_sigma2). It also uses no GARCH-derived
+inputs or initialization of any kind — see its own docstring.
 """
 from __future__ import annotations
 
@@ -83,21 +92,22 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
 def _make_learned_nu_model(base_model, rho_init: float, lam: float,
                             s_sse: float = 1.0, s_t: float = 1.0, name: str = "LSTM-SSE-t-Student"):
     """
-    Section 8: wraps a base model (predicting u_t = log σ̂²_t) with a
+    Section 8: wraps a base model (predicting sigma2_t directly, via the
+    base model's own activation="exponential" output layer) with a
     trainable, global Student-t ν = 2 + softplus(ρ), via a custom
     train_step/test_step so ν participates in gradient descent alongside
-    the network's weights. predict()/call() are unchanged (same
-    (batch, 1) log_sigma2 output as the fixed-ν path) — only the loss
-    computation and optimizer step differ, which keeps every downstream
-    model.predict(...) call site (sigma2_from_log_var conversion, etc.)
-    working exactly as it does for the fixed-ν path.
+    the network's weights. predict()/call() are unchanged (same (batch, 1)
+    sigma2 output as the fixed-ν path) — only the loss computation and
+    optimizer step differ, which keeps every downstream
+    model.predict(...) call site (sigma2_from_direct_output conversion,
+    etc.) working exactly as it does for the fixed-ν path.
 
     A local class (not module-level) matching this file's lazy-TF-import
     convention: tf.keras.Model must already be resolvable when the class
     body evaluates.
     """
     import tensorflow as tf
-    from src.losses.hybrid_student_t import hybrid_loss_components_tf
+    from src.losses.hybrid_student_t import hybrid_loss_components_sigma2_tf
 
     class _LearnedNuModel(tf.keras.Model):
         def __init__(self, **kwargs):
@@ -118,7 +128,7 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             return 2.0 + tf.nn.softplus(self.rho)
 
         def _compute_loss(self, y_true, y_pred):
-            L_sse, L_t = hybrid_loss_components_tf(y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val)
+            L_sse, L_t = hybrid_loss_components_sigma2_tf(y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val)
             return (1.0 - self.lam_val) * L_sse + self.lam_val * L_t
 
         def train_step(self, data):
@@ -142,8 +152,28 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
 
 def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     """
-    Same LSTM architecture as LSTM-SSE but trained with the hybrid
-    (1−λ)·MSE/s_sse + λ·NLL_Student-t/s_t loss.
+    LSTM trained with the hybrid (1−λ)·MSE/s_sse + λ·NLL_Student-t/s_t
+    loss, optimized end-to-end by gradient-based maximum likelihood.
+
+    By design this model uses NO GARCH parameters or GARCH-derived
+    quantities anywhere -- not for weight injection, not for the initial
+    cell state, not even to seed ν's starting value. Its input is ε²_t
+    (the realized-variance proxy, scaled by src.data.scaling exactly as
+    every other neural model here), and its weights are the ONLY thing
+    that has to discover any GARCH-like dynamics; nothing is copied in.
+    This is the intentional counterpoint to the (separate, still-intact)
+    Section 6 src.models.garch_init verification path, which explicitly
+    injects the GARCH solution into an LSTM cell to check whether the
+    architecture CAN reproduce it -- that check is a structural-capacity
+    diagnostic, not part of how this model is actually fit.
+
+    Output layer: Dense(1, activation="exponential") -- σ̂²_t > 0 is
+    guaranteed by the architecture itself (exp of a linear pre-activation)
+    rather than by a downstream log-variance transform. This is the one
+    exception to Section 3's u_t=log(σ̂²_t)-no-activation convention used
+    by every other model in this file; this model's raw predict() output
+    IS σ̂²_t directly (see src.losses.hybrid_student_t.
+    sigma2_from_direct_output and hybrid_loss_components_sigma2_tf).
 
     Extra hp keys: nu (degrees of freedom, used when hp["nu_mode"] is
     not "learned"), lam (λ mixing weight), s_sse / s_t (frozen
@@ -158,39 +188,22 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
                "likelihood_search" below for the corrected alternative
                -- or set directly by the caller).
       "learned" — ν = 2 + softplus(ρ) is a trainable model parameter,
-               ρ initialized from hp["nu_rho_init"] (the value implied
-               by this series' GARCH-t ν̂). Returns a LearnedNuModel
-               wrapping the usual functional model; predict() output is
-               unchanged.
+               ρ initialized from hp["nu_rho_init"] (a fixed, neutral
+               starting point chosen independently of any series' GARCH
+               fit -- see tune_and_train._run_model_series). Returns a
+               LearnedNuModel wrapping the usual functional model;
+               predict() output is unchanged.
       Any other value of hp["nu"] set by an outer "likelihood_search"
       selection (Section 8) is just a fixed ν chosen by OOS likelihood
       rather than validation MSE/hybrid-loss -- from this function's
       point of view that is identical to "fixed" (nu_mode stays "fixed"
       or is omitted; the search happens one level up, in
       src.tuning.tune_and_train).
-
-    hp["init"] selects the LSTM weight initialization (Section 6):
-      "glorot" (default) — standard Keras init, tanh activation.
-      "garch"  — single-unit LSTM initialized from the GARCH(1,1)-t MLE
-                 solution of this series (src.models.garch_init), with a
-                 linear LSTM activation and a fixed (non-trainable)
-                 initial cell state c0. Requires hp["garch_alpha"],
-                 hp["garch_beta"], hp["garch_omega"],
-                 hp["garch_sigma2_train"] (only valid when
-                 data.input_scaling="unconditional" — see
-                 src.models.garch_init module docstring for the mapping).
-                 hp["lstm_units"] is ignored (forced to 1): a linear
-                 activation has no saturation to bound extra hidden
-                 units, so random-initialized capacity beyond the single
-                 GARCH-tracking unit is numerically unstable over the
-                 window length (verified empirically -- it diverges
-                 within one epoch). Proposition 2's construction is a
-                 single scalar recursion; that is what this reproduces.
     """
-    import numpy as np
     import tensorflow as tf
-    from src.losses.hybrid_student_t import make_hybrid_loss
+    from src.losses.hybrid_student_t import make_hybrid_loss_sigma2
 
+    units    = hp["lstm_units"]
     drop     = hp.get("dropout", 0.0)
     lr       = hp.get("learning_rate", 1e-3)
     lam      = hp["lam"]
@@ -198,40 +211,12 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     nu_mode  = hp.get("nu_mode", "fixed")
     s_sse = hp.get("s_sse", 1.0)
     s_t   = hp.get("s_t", 1.0)
-    init  = hp.get("init", "glorot")
-    units = 1 if init == "garch" else hp["lstm_units"]
 
     inp = tf.keras.Input(shape=(W, 1), name="eps_window")
-
-    if init == "garch":
-        from src.models.garch_init import (
-            garch_lstm_weight_arrays, garch_initial_cell_state,
-            make_constant_initial_state_layer,
-        )
-        alpha = hp["garch_alpha"]
-        beta = hp["garch_beta"]
-        omega = hp["garch_omega"]
-        sigma2_train = hp["garch_sigma2_train"]
-        c0 = garch_initial_cell_state(omega, alpha, beta, sigma2_train)["c0"]
-
-        h0_vec = np.zeros(units, dtype=np.float32)
-        c0_vec = np.full(units, c0, dtype=np.float32)
-        h0 = make_constant_initial_state_layer(h0_vec, name="h0_init")(inp)
-        c0_state = make_constant_initial_state_layer(c0_vec, name="c0_init")(inp)
-
-        lstm_layer = tf.keras.layers.LSTM(
-            units, activation="linear", recurrent_activation="sigmoid",
-            dropout=drop, recurrent_dropout=0.0,
-        )
-        x = lstm_layer(inp, initial_state=[h0, c0_state])
-        w = garch_lstm_weight_arrays(alpha, beta, omega, sigma2_train, units=units)
-        lstm_layer.set_weights([w["kernel"], w["recurrent_kernel"], w["bias"]])
-    else:
-        x = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
-                                  kernel_initializer="glorot_uniform")(inp)
-
-    x     = tf.keras.layers.Dropout(drop)(x)
-    out   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2")(x)
+    x   = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
+                                kernel_initializer="glorot_uniform")(inp)
+    x   = tf.keras.layers.Dropout(drop)(x)
+    out = tf.keras.layers.Dense(1, activation="exponential", name="sigma2")(x)
 
     base_model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
 
@@ -245,7 +230,7 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
         model = base_model
         model.compile(
             optimizer=tf.keras.optimizers.Adam(lr),
-            loss=make_hybrid_loss(nu=hp["nu"], lam=lam, s_sse=s_sse, s_t=s_t),
+            loss=make_hybrid_loss_sigma2(nu=hp["nu"], lam=lam, s_sse=s_sse, s_t=s_t),
         )
     return model
 

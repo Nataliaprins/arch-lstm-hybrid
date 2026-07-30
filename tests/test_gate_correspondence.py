@@ -89,17 +89,17 @@ def test_regression_lstm_vs_garch_unrelated_series():
     assert abs(res["pearson_r"]) < 0.3
 
 
-def test_compute_gate_statistics_one_seed_learned_nu_garch_init(tmp_path):
+def test_compute_gate_statistics_one_seed_learned_nu(tmp_path):
     """
-    Reproduces the real run-time failure: with the frozen config's
-    nu_mode="learned" + init="garch", build_lstm_t_student returns a
-    _LearnedNuModel (a tf.keras.Model subclass), which Keras only
-    considers "built" after a first forward call. Loading weights into
-    an unbuilt subclassed model raises "You are loading weights into a
-    model that has not yet been built." This test builds a tiny model,
-    saves weights the same way _multiseed_train_and_predict does
-    (model.save_weights after at least one call), then verifies gate
-    extraction on a *freshly constructed, never-called* model succeeds.
+    Reproduces the real run-time failure: with nu_mode="learned",
+    build_lstm_t_student returns a _LearnedNuModel (a tf.keras.Model
+    subclass), which Keras only considers "built" after a first forward
+    call. Loading weights into an unbuilt subclassed model raises "You
+    are loading weights into a model that has not yet been built." This
+    test builds a tiny model, saves weights the same way
+    _multiseed_train_and_predict does (model.save_weights after at least
+    one call), then verifies gate extraction on a *freshly constructed,
+    never-called* model succeeds.
     """
     import tensorflow as tf
     from src.models.neural import build_lstm_t_student
@@ -109,8 +109,6 @@ def test_compute_gate_statistics_one_seed_learned_nu_garch_init(tmp_path):
         "learning_rate": 1e-3, "window_size": 5,
         "nu_mode": "learned", "nu_rho_init": 1.0, "lam": 0.5,
         "s_sse": 1.0, "s_t": 1.0,
-        "init": "garch", "garch_alpha": 0.1, "garch_beta": 0.85,
-        "garch_omega": 0.05, "garch_sigma2_train": 1.0,
     }
     rng = np.random.default_rng(0)
     X = rng.normal(size=(16, hp["window_size"], 1)).astype("float32")

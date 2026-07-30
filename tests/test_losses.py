@@ -10,8 +10,11 @@ from src.losses.hybrid_student_t import (
     student_t_ll_total,
     make_hybrid_loss,
     make_hybrid_loss_variable_nu,
+    make_hybrid_loss_sigma2,
+    make_hybrid_loss_variable_nu_sigma2,
     make_variance_mse_loss,
     sigma2_from_log_var,
+    sigma2_from_direct_output,
     compute_loss_scales,
     effective_lambda,
     inv_softplus,
@@ -214,3 +217,71 @@ def test_make_hybrid_loss_variable_nu_gradient_flows_to_nu():
     assert grad is not None
     assert np.isfinite(float(grad.numpy()))
     assert float(grad.numpy()) != 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Sigma2-direct hybrid loss (build_lstm_t_student's no-GARCH-init variant:
+# output layer activation="exponential", raw model output IS sigma2_t,
+# no exp() applied inside the loss).
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_sigma2_direct_keras_loss_matches_numpy():
+    """
+    Unlike test_keras_loss_matches_numpy, y_pred here is fed SIGMA2
+    directly (not log(SIGMA2)) -- this is the whole point: catches a
+    double-exponentiation bug (exp(exp(z)) instead of exp(z)) if the
+    sigma2-direct loss ever accidentally re-applied exp() to an
+    already-positive input.
+    """
+    import tensorflow as tf
+    lam, nu = 0.5, 4
+    keras_fn = make_hybrid_loss_sigma2(nu=nu, lam=lam)
+    y_true = tf.constant(EPS2[:20], dtype=tf.float32)
+    sigma2_pred = tf.constant(SIGMA2[:20], dtype=tf.float32)
+    k_loss = float(keras_fn(y_true, sigma2_pred).numpy())
+    n_loss = hybrid_loss_numpy(EPS2[:20], SIGMA2[:20], nu=nu, lam=lam)
+    assert abs(k_loss - n_loss) < 1e-4, f"Keras={k_loss}  NumPy={n_loss}"
+
+
+def test_sigma2_direct_variable_nu_matches_fixed_nu_at_same_value():
+    import tensorflow as tf
+    lam, nu_val = 0.5, 5.0
+    fixed_fn = make_hybrid_loss_sigma2(nu=nu_val, lam=lam)
+    variable_fn = make_hybrid_loss_variable_nu_sigma2(nu_fn=lambda: tf.constant(nu_val), lam=lam)
+
+    y_true = tf.constant(EPS2[:20], dtype=tf.float32)
+    sigma2_pred = tf.constant(SIGMA2[:20], dtype=tf.float32)
+
+    fixed_loss = float(fixed_fn(y_true, sigma2_pred).numpy())
+    variable_loss = float(variable_fn(y_true, sigma2_pred).numpy())
+    assert abs(fixed_loss - variable_loss) < 1e-5
+
+
+def test_sigma2_direct_variable_nu_gradient_flows_to_nu():
+    import tensorflow as tf
+    rho = tf.Variable(inv_softplus(3.0), dtype=tf.float32)
+    loss_fn = make_hybrid_loss_variable_nu_sigma2(nu_fn=lambda: 2.0 + tf.nn.softplus(rho), lam=1.0)
+    y_true = tf.constant(EPS2, dtype=tf.float32)
+    sigma2_pred = tf.constant(SIGMA2, dtype=tf.float32)
+
+    with tf.GradientTape() as tape:
+        loss = loss_fn(y_true, sigma2_pred)
+    grad = tape.gradient(loss, rho)
+    assert grad is not None
+    assert np.isfinite(float(grad.numpy()))
+    assert float(grad.numpy()) != 0.0
+
+
+def test_sigma2_from_direct_output_floors_nonpositive():
+    y = np.array([-1.0, 0.0, 1e-12, 3.5])
+    out = sigma2_from_direct_output(y, floor=1e-8)
+    assert np.all(out >= 1e-8)
+    assert out[3] == pytest.approx(3.5)
+
+
+def test_sigma2_from_direct_output_is_not_exponentiated():
+    """This is an identity/floor pass-through, NOT exp() -- distinguishes
+    it from sigma2_from_log_var, whose whole point IS to exponentiate."""
+    y = np.array([0.5, 2.0, 10.0])
+    out = sigma2_from_direct_output(y)
+    assert np.allclose(out, y)

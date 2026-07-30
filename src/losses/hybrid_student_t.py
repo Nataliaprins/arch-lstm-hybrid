@@ -109,6 +109,66 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
     return _loss
 
 
+def hybrid_loss_components_sigma2_tf(y_true, y_pred, nu, s_sse: float = 1.0, s_t: float = 1.0):
+    """
+    Same (L_sse_normalized, L_t_normalized) computation as
+    hybrid_loss_components_tf, but for a model whose output layer already
+    guarantees sigma2_t > 0 directly (activation="exponential"), rather
+    than emitting u_t = log sigma2_t for a downstream exp() transform.
+    y_pred here IS sigma2_t; only floored (never exponentiated) for
+    numerical safety against float32 underflow to exactly 0.
+    """
+    import tensorflow as tf
+
+    eps2 = tf.cast(y_true, tf.float32)
+    sigma2 = tf.maximum(tf.cast(y_pred, tf.float32), 1e-8)
+    nu_t = tf.cast(nu, tf.float32)
+    nu_m2 = nu_t - 2.0
+
+    L_sse = tf.reduce_mean(tf.square(sigma2 - eps2)) / float(s_sse)
+
+    log_s2  = tf.math.log(sigma2)
+    ratio   = eps2 / (sigma2 * nu_m2)
+    log1p_r = tf.math.log1p(ratio)
+    L_t     = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_t + 1.0) * log1p_r) / float(s_t)
+
+    return L_sse, L_t
+
+
+def make_hybrid_loss_sigma2(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
+    """Fixed-nu hybrid loss for a model whose raw output IS sigma2_t (activation="exponential")."""
+    nu_val  = float(max(nu, 2.01))
+    lam_val = float(np.clip(lam, 0.0, 1.0))
+
+    def _loss(y_true, y_pred):
+        L_sse, L_t = hybrid_loss_components_sigma2_tf(y_true, y_pred, nu_val, s_sse, s_t)
+        return (1.0 - lam_val) * L_sse + lam_val * L_t
+
+    _loss.__name__ = f"hybrid_t_sigma2_nu{int(nu_val)}_lam{lam_val:.1f}"
+    return _loss
+
+
+def make_hybrid_loss_variable_nu_sigma2(nu_fn, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
+    """Learned-nu (Section 8) hybrid loss for a model whose raw output IS sigma2_t."""
+    lam_val = float(np.clip(lam, 0.0, 1.0))
+
+    def _loss(y_true, y_pred):
+        L_sse, L_t = hybrid_loss_components_sigma2_tf(y_true, y_pred, nu_fn(), s_sse, s_t)
+        return (1.0 - lam_val) * L_sse + lam_val * L_t
+
+    _loss.__name__ = f"hybrid_t_learnednu_sigma2_lam{lam_val:.1f}"
+    return _loss
+
+
+def sigma2_from_direct_output(y: np.ndarray, floor: float = 1e-8) -> np.ndarray:
+    """
+    For a model whose raw output already IS sigma2_t (activation=
+    "exponential" guarantees positivity architecturally) -- only floors
+    against float32 underflow to exactly 0, no exp() applied.
+    """
+    return np.maximum(np.asarray(y, dtype=float), floor)
+
+
 def inv_softplus(y: float) -> float:
     """rho such that softplus(rho) = y. Used to initialize a learnable nu = 2 + softplus(rho) at a target value (Section 8)."""
     y = max(float(y), 1e-6)

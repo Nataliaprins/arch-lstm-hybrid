@@ -1,11 +1,16 @@
 """
 garch_init.py — GARCH(1,1)-t -> LSTM weight initialization (Proposition 2).
 
-Initializes the proposed LSTM (LSTM-SSE-t-Student) from the already-fitted
-GARCH(1,1)-t maximum-likelihood estimates of the same series, so training
-starts from a point that is already exactly (up to a small, deliberate
-o_t ~ 1 approximation) the GARCH(1,1) recursion, rather than from a
-generic random init that has to rediscover it.
+Builds a probe LSTM initialized from the already-fitted GARCH(1,1)-t
+maximum-likelihood estimates of a series, so its recursion starts
+exactly (up to a small, deliberate o_t ~ 1 approximation) at the
+GARCH(1,1) recursion, and verifies that it reproduces the GARCH path
+byte-for-byte. This is a structural-capacity check (Section 6): can an
+LSTM cell exactly represent the GARCH(1,1)-t recursion if the mapping is
+applied directly? It no longer feeds the actual trained proposed model
+(src.models.neural.build_lstm_t_student), which by design uses no GARCH
+parameters anywhere and is instead trained from a neutral start by
+gradient-based maximum likelihood -- see that function's docstring.
 
 Derivation
 ----------
