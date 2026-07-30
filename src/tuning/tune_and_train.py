@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -50,6 +51,79 @@ def _progress_bar(done: int, total: int, width: int = 26) -> str:
     fill = int(round(ratio * width))
     bar = "#" * fill + "-" * (width - fill)
     return f"[{bar}] {ratio * 100:5.1f}%"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Resumability (Section 12 single frozen run: this run was killed by the OS
+# OOM killer partway through SP500 -- these checks let it be restarted
+# without re-running, and therefore without perturbing, any model-step that
+# already finished under the frozen Section 3 configuration).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _model_step_complete(out_dir: Path, model_key: str, n_seeds: int, min_mtime: float) -> bool:
+    """
+    True iff this model-step's final aggregate artifacts are all present AND
+    were written no earlier than `min_mtime` (the start time of the current
+    frozen run, per .stamps/data). The mtime guard is essential: outputs/
+    models/ was not wiped before this run (only .stamps was), so several
+    series/models still carry leftover artifacts from Section 2-9.7
+    development smoke-tests against real data. Without the mtime check,
+    those pre-freeze artifacts would be silently mistaken for this run's
+    output -- exactly the "reuse of pre-respecification artifacts" the
+    pre-registration (Section 4) rules out.
+    """
+    required = [out_dir / "sigma2_test.npy", out_dir / "timing.json"]
+    if model_key != "svr_garch":
+        required.append(out_dir / "sigma2_per_seed.npy")
+    for f in required:
+        if not f.exists() or f.stat().st_mtime < min_mtime:
+            return False
+    if model_key == "svr_garch":
+        return True
+    try:
+        return int(np.load(out_dir / "sigma2_per_seed.npy").shape[0]) >= n_seeds
+    except Exception:
+        return False
+
+
+def _lambda_sensitivity_complete(proposed_out_dir: Path, series: str, cfg: dict, min_mtime: float) -> bool:
+    lam_dir = proposed_out_dir.parent / "lambda_sensitivity"
+    f = lam_dir / f"{series}_lambda_sensitivity.json"
+    if not f.exists() or f.stat().st_mtime < min_mtime:
+        return False
+    try:
+        with open(f) as fh:
+            results = json.load(fh)
+        expected = {float(v) for v in cfg.get(
+            "lambda_sensitivity", [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+        )}
+        got = {float(r["lambda"]) for r in results}
+        return expected.issubset(got)
+    except Exception:
+        return False
+
+
+def _load_nu_kurt_from_log(logs_dir: Path, series_name: str) -> tuple[float, float] | None:
+    """
+    Recover (nu_final, kurtosis) for an already-completed lstm_t_student
+    step by re-reading its line from logs/nu_comparison.log, so a skipped
+    (already-done) series still contributes to the cross-series Spearman
+    correlation without re-running its training.
+    """
+    log_path = logs_dir / "nu_comparison.log"
+    if not log_path.exists():
+        return None
+    pattern = re.compile(
+        rf"^{re.escape(series_name)}\s+nu_mode=\S+\s+nu_final=([\-0-9.]+)\s.*"
+        rf"excess_kurtosis_train_eps=([\-0-9.]+)"
+    )
+    result = None
+    with open(log_path) as fh:
+        for line in fh:
+            m = pattern.match(line.strip())
+            if m:
+                result = (float(m.group(1)), float(m.group(2)))
+    return result
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -932,6 +1006,14 @@ def run(config_path: str) -> None:
             )
 
     run_lambda_sensitivity = bool(cfg.get("run_lambda_sensitivity", True))
+    n_seeds = cfg["n_seeds"]
+
+    # Resumability freshness cutoff: .stamps/data is (re)written at the very
+    # start of this exact `make all` invocation (after `rm -rf .stamps`), so
+    # its mtime marks when THIS frozen run began. Only artifacts written at
+    # or after that instant count as belonging to this run.
+    data_stamp = Path(cfg["paths"].get("stamps", ".stamps")) / "data"
+    min_mtime = data_stamp.stat().st_mtime if data_stamp.exists() else 0.0
 
     total_tasks = len(cfg["series"]) * (len(NEURAL_MODELS) + (1 if run_lambda_sensitivity else 0))
     task_done = 0
@@ -943,6 +1025,33 @@ def run(config_path: str) -> None:
 
     for series_cfg in cfg["series"]:
         name = series_cfg["name"]
+
+        # Resumability: if every model-step (and lambda-sensitivity) for
+        # this series already has complete output artifacts on disk -- e.g.
+        # because a previous invocation of this same frozen run was killed
+        # partway through a LATER series -- skip the whole series without
+        # loading data or re-appending to loss_scales.log/nu_comparison.log.
+        series_done = all(
+            _model_step_complete(models_dir / folder / name, model_key, n_seeds, min_mtime)
+            for model_key, _, folder in NEURAL_MODELS
+        )
+        if series_done and run_lambda_sensitivity:
+            series_done = _lambda_sensitivity_complete(
+                models_dir / "LSTM-SSE-t-Student" / name, name, cfg, min_mtime
+            )
+        if series_done:
+            log.info("══ Series: %s — already complete, skipping ════════════", name)
+            for _, _, folder in NEURAL_MODELS:
+                run_status.append({"series": name, "step": folder, "status": "SKIPPED", "seconds": 0.0, "error": ""})
+                task_done += 1
+            if run_lambda_sensitivity:
+                run_status.append({"series": name, "step": "lambda-sensitivity", "status": "SKIPPED", "seconds": 0.0, "error": ""})
+                task_done += 1
+            recovered = _load_nu_kurt_from_log(logs_dir, name)
+            if recovered is not None:
+                nu_kurt_pairs.append((name, recovered[0], recovered[1]))
+            continue
+
         log.info("══ Series: %s ════════════════════════════════════════", name)
 
         data = _load_series(name, processed_dir)
@@ -965,9 +1074,23 @@ def run(config_path: str) -> None:
 
         for model_key, build_fn, folder in NEURAL_MODELS:
             step_label = f"{name}/{folder}"
+            out_dir = models_dir / folder / name
+
+            # Resumability: this individual model-step already has complete
+            # output artifacts (e.g. it finished before the process was
+            # killed on a later step) -- skip re-training it.
+            if _model_step_complete(out_dir, model_key, n_seeds, min_mtime):
+                log.info("%s  SKIP  %s (already completed)", _progress_bar(task_done, total_tasks), step_label)
+                run_status.append({"series": name, "step": folder, "status": "SKIPPED", "seconds": 0.0, "error": ""})
+                if model_key == "lstm_t_student":
+                    recovered = _load_nu_kurt_from_log(logs_dir, name)
+                    if recovered is not None:
+                        nu_kurt_pairs.append((name, recovered[0], recovered[1]))
+                task_done += 1
+                continue
+
             log.info("%s  START %s", _progress_bar(task_done, total_tasks), step_label)
             log.info("── %s / %s ──", name, folder)
-            out_dir = models_dir / folder / name
             t0 = time.perf_counter()
             try:
                 nu_kurt = _run_model_series(
@@ -1006,6 +1129,12 @@ def run(config_path: str) -> None:
         # λ-sensitivity for the proposed model
         if run_lambda_sensitivity:
             step_label = f"{name}/lambda-sensitivity"
+            proposed_out_dir = models_dir / "LSTM-SSE-t-Student" / name
+            if _lambda_sensitivity_complete(proposed_out_dir, name, cfg, min_mtime):
+                log.info("%s  SKIP  %s (already completed)", _progress_bar(task_done, total_tasks), step_label)
+                run_status.append({"series": name, "step": "lambda-sensitivity", "status": "SKIPPED", "seconds": 0.0, "error": ""})
+                task_done += 1
+                continue
             log.info("%s  START %s", _progress_bar(task_done, total_tasks), step_label)
             log.info("── %s / lambda-sensitivity ──", name)
             t0 = time.perf_counter()
