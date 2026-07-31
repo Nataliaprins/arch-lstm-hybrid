@@ -1,0 +1,14 @@
+{
+  "LL_insample": -2762.6453300772237,
+  "AIC": 5535.290660154447,
+  "BIC": 5563.834958159683,
+  "convergence": 0,
+  "hess_pd": null,
+  "n_obs": 2228,
+  "fit_seconds": 0.104,
+  "n_params": 5,
+  "persistence": 0.990267,
+  "stationary": true,
+  "uncond_var": 0.965351,
+  "half_life_days": 70.87
+}

@@ -1,0 +1,22 @@
+{
+  "ticker": "CL=F",
+  "name": "OIL",
+  "returns_scale": 100,
+  "n_total": 2784,
+  "n_train": 2227,
+  "n_val": 278,
+  "n_test": 279,
+  "mu_train": 0.04251863034177632,
+  "train_var_eps": 8.861397520274338,
+  "split_dates": {
+    "train_start": "2015-06-02",
+    "train_end": "2024-04-11",
+    "val_start": "2024-04-12",
+    "val_end": "2025-05-20",
+    "test_start": "2025-05-21",
+    "test_end": "2026-06-30"
+  },
+  "prices_start": "2015-06-01",
+  "prices_end": "2026-06-30",
+  "n_prices": 2787
+}

@@ -1,0 +1,19 @@
+\begin{table}[ht]
+\centering
+\caption{Table 9. Diebold–Mariano Tests}
+\label{tab:dm}
+\begin{tabular}{lrrrrrrrrrrrrrrrrrr}
+\toprule
+ & ('BTC-USD', 'DM') & ('BTC-USD', 'p(Holm)') & ('BTC-USD', 'TOST p') & ('ETH-USD', 'DM') & ('ETH-USD', 'p(Holm)') & ('ETH-USD', 'TOST p') & ('DJIA', 'DM') & ('DJIA', 'p(Holm)') & ('DJIA', 'TOST p') & ('SP500', 'DM') & ('SP500', 'p(Holm)') & ('SP500', 'TOST p') & ('GOLD', 'DM') & ('GOLD', 'p(Holm)') & ('GOLD', 'TOST p') & ('OIL', 'DM') & ('OIL', 'p(Holm)') & ('OIL', 'TOST p') \\
+\midrule
+ARCH(1) & 7.420*** & 0.000 & 1.000 & 2.400 & 0.115 & 0.910 & 0.559 & 1.000 & 0.555 & -1.048 & 0.955 & 0.770 & 1.513 & 0.133 & 0.809 & -1.462 & 0.255 & 0.890 \\
+Constant (unconditional variance) & 4.455*** & 0.000 & 1.000 & 2.082 & 0.224 & 0.769 & 8.594*** & 0.000 & 1.000 & 9.047*** & 0.000 & 1.000 & 2.854** & 0.030 & 0.994 & -1.525 & 0.255 & 0.903 \\
+EGARCH(1,1) & 0.014 & 0.989 & 0.279 & -0.401 & 1.000 & 0.223 & -0.747 & 1.000 & 0.711 & -1.161 & 0.955 & 0.853 & -2.346 & 0.114 & 0.988 & -2.268 & 0.163 & 0.982 \\
+FIGARCH(1,d,1) & -2.175 & 0.148 & 0.931 & -1.191 & 1.000 & 0.491 & -0.594 & 1.000 & 0.668 & -1.178 & 0.955 & 0.860 & -2.202 & 0.133 & 0.983 & -2.196 & 0.163 & 0.979 \\
+GARCH(1,1) & -2.012 & 0.148 & 0.903 & -0.656 & 1.000 & 0.285 & -0.942 & 1.000 & 0.774 & -1.037 & 0.955 & 0.826 & -2.219 & 0.133 & 0.983 & -2.264 & 0.163 & 0.982 \\
+GJR-GARCH(1,1) & -2.115 & 0.148 & 0.904 & -0.620 & 1.000 & 0.267 & -1.660 & 0.582 & 0.930 & -1.567 & 0.585 & 0.928 & -2.183 & 0.133 & 0.982 & -2.087 & 0.163 & 0.971 \\
+HAR & 1.282 & 0.399 & 0.723 & -0.057 & 1.000 & 0.085 & -1.558 & 0.597 & 0.901 & -2.147 & 0.191 & 0.976 & -2.068 & 0.133 & 0.976 & -2.204 & 0.163 & 0.979 \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Diebold–Mariano test: LSTM-SSE-t-Student vs. each rival model. Loss function: QLIKE. HAC SE (Newey–West, bandwidth ⌊4(T/100)^{2/9}⌋). p(Holm): p-value after Holm–Bonferroni FWER correction per market. Positive DM stat: rival has higher loss → proposed wins. Significance: *** p<0.01, ** p<0.05, * p<0.10 (after Holm). TOST p (Section 9.4): two one-sided-tests p-value for equivalence of QLIKE loss within margin delta = tost.delta\_pct × GARCH(1,1)'s own mean QLIKE (config, default 2%%), HAC SE. TOST p < 0.05 (marked \textsuperscript{eq}) is a POSITIVE claim of equivalence -- the opposite reading from a DM p-value.
+\end{table}

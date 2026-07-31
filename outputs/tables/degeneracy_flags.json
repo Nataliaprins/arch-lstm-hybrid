@@ -1,0 +1,434 @@
+{
+  "BTC-USD": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "BTC-USD",
+      "temporal_cv": 0.5226137995724892,
+      "mse_model": 818.892422091231,
+      "mse_constant": 295.027406,
+      "mse_ratio": 2.775648653099133,
+      "cross_seed_mse_relstd": null,
+      "degenerate": true
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "BTC-USD",
+      "temporal_cv": 0.7904686314228738,
+      "mse_model": 215.2682938244225,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7296552437044527,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "BTC-USD",
+      "temporal_cv": 0.688231082590454,
+      "mse_model": 243.67336286571881,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.8259346688141874,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "BTC-USD",
+      "temporal_cv": 0.7468923328107557,
+      "mse_model": 216.62581006147352,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7342565661899001,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "BTC-USD",
+      "temporal_cv": 0.8449726386986467,
+      "mse_model": 213.1224351869901,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7223818223415831,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "BTC-USD",
+      "temporal_cv": 0.25321280623884884,
+      "mse_model": 225.18016085330092,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7632516717897758,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "BTC-USD",
+      "temporal_cv": 0.14656637253627436,
+      "mse_model": 219.95314163466605,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7455346085192711,
+      "cross_seed_mse_relstd": 0.026109649870665247,
+      "degenerate": false
+    }
+  },
+  "ETH-USD": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "ETH-USD",
+      "temporal_cv": 0.3656453050937818,
+      "mse_model": 947.6821220751536,
+      "mse_constant": 852.795855,
+      "mse_ratio": 1.1112649252676698,
+      "cross_seed_mse_relstd": null,
+      "degenerate": true
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "ETH-USD",
+      "temporal_cv": 0.5092682355084117,
+      "mse_model": 790.3585045696126,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.926785115025697,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "ETH-USD",
+      "temporal_cv": 0.4658259930241024,
+      "mse_model": 785.882373693657,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.9215363431775322,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "ETH-USD",
+      "temporal_cv": 0.49852771197535584,
+      "mse_model": 790.26054319704,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.926670244189965,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "ETH-USD",
+      "temporal_cv": 0.5221972938638255,
+      "mse_model": 758.478250458323,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.8894018961411616,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "ETH-USD",
+      "temporal_cv": 0.2329702134377467,
+      "mse_model": 772.9109800018082,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.9063259107911684,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "ETH-USD",
+      "temporal_cv": 0.10737608775858755,
+      "mse_model": 774.7305299511946,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.9084595397701536,
+      "cross_seed_mse_relstd": 0.015518970763225086,
+      "degenerate": false
+    }
+  },
+  "DJIA": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "DJIA",
+      "temporal_cv": 0.5475796084550204,
+      "mse_model": 1.5267357505875383,
+      "mse_constant": 1.51004,
+      "mse_ratio": 1.0110564955812682,
+      "cross_seed_mse_relstd": null,
+      "degenerate": true
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "DJIA",
+      "temporal_cv": 0.4379660317236176,
+      "mse_model": 1.1019376537627057,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7297407047248454,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "DJIA",
+      "temporal_cv": 0.3948589309186608,
+      "mse_model": 1.1043604470137485,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7313451610644409,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "DJIA",
+      "temporal_cv": 0.4943216537996965,
+      "mse_model": 1.035416682527933,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.6856882483430459,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "DJIA",
+      "temporal_cv": 0.47050672841330865,
+      "mse_model": 1.0969485096023857,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7264367232671887,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "DJIA",
+      "temporal_cv": 0.41599139723149814,
+      "mse_model": 1.1332471731928764,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7504749365532545,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "DJIA",
+      "temporal_cv": 0.0096826607689788,
+      "mse_model": 1.165986377726098,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7721559546277568,
+      "cross_seed_mse_relstd": 0.02035661077137904,
+      "degenerate": true
+    }
+  },
+  "SP500": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "SP500",
+      "temporal_cv": 0.6309391111501896,
+      "mse_model": 2.007399590312106,
+      "mse_constant": 1.785698,
+      "mse_ratio": 1.1241540228594677,
+      "cross_seed_mse_relstd": null,
+      "degenerate": true
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "SP500",
+      "temporal_cv": 0.5542334247293733,
+      "mse_model": 1.3267595936561094,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7429921485358159,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "SP500",
+      "temporal_cv": 0.49967020164447956,
+      "mse_model": 1.331804922845564,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7458175586496507,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "SP500",
+      "temporal_cv": 0.6641214443764137,
+      "mse_model": 1.2792444879345408,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7163834466603763,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "SP500",
+      "temporal_cv": 0.5618897712951415,
+      "mse_model": 1.304342251842476,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.730438322629289,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "SP500",
+      "temporal_cv": 0.540861611096849,
+      "mse_model": 1.4023787511450172,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7853392629352876,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "SP500",
+      "temporal_cv": 0.0017561779412632059,
+      "mse_model": 1.6330949874796352,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.9145415336073822,
+      "cross_seed_mse_relstd": 0.0005466819231990961,
+      "degenerate": true
+    }
+  },
+  "GOLD": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "GOLD",
+      "temporal_cv": 0.2581758044948453,
+      "mse_model": 100.89404764559852,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.9956726505083625,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "GOLD",
+      "temporal_cv": 0.6821001543395069,
+      "mse_model": 96.39807849898938,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.9513041905122644,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "GOLD",
+      "temporal_cv": 0.5393884293716923,
+      "mse_model": 96.5741986976318,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.9530422322410127,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "GOLD",
+      "temporal_cv": 0.6306946559915223,
+      "mse_model": 95.68792292347484,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.944296022036067,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "GOLD",
+      "temporal_cv": 0.790542091394701,
+      "mse_model": 95.82439823292506,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.9456428282774675,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "GOLD",
+      "temporal_cv": 0.8837416042971796,
+      "mse_model": 96.98643161035017,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.95711035168325,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "GOLD",
+      "temporal_cv": 0.03801914485654542,
+      "mse_model": 100.75458378760851,
+      "mse_constant": 101.332549,
+      "mse_ratio": 0.9942963517833595,
+      "cross_seed_mse_relstd": 0.0018805669197766177,
+      "degenerate": true
+    }
+  },
+  "OIL": {
+    "ARCH(1)": {
+      "model": "ARCH(1)",
+      "series": "OIL",
+      "temporal_cv": 1.12324454519109,
+      "mse_model": 868.5674683441684,
+      "mse_constant": 820.466878,
+      "mse_ratio": 1.0586258770877142,
+      "cross_seed_mse_relstd": null,
+      "degenerate": true
+    },
+    "GARCH(1,1)": {
+      "model": "GARCH(1,1)",
+      "series": "OIL",
+      "temporal_cv": 1.0493293952106812,
+      "mse_model": 756.5765552937379,
+      "mse_constant": 820.466878,
+      "mse_ratio": 0.922129309031946,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "EGARCH(1,1)": {
+      "model": "EGARCH(1,1)",
+      "series": "OIL",
+      "temporal_cv": 0.9031679132736543,
+      "mse_model": 759.7310655953844,
+      "mse_constant": 820.466878,
+      "mse_ratio": 0.9259740837403853,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "GJR-GARCH(1,1)": {
+      "model": "GJR-GARCH(1,1)",
+      "series": "OIL",
+      "temporal_cv": 1.093545264482077,
+      "mse_model": 801.5722914782862,
+      "mse_constant": 820.466878,
+      "mse_ratio": 0.9769709332230792,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "FIGARCH(1,d,1)": {
+      "model": "FIGARCH(1,d,1)",
+      "series": "OIL",
+      "temporal_cv": 1.1227893386853673,
+      "mse_model": 770.2049091513334,
+      "mse_constant": 820.466878,
+      "mse_ratio": 0.938739795357508,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "HAR": {
+      "model": "HAR",
+      "series": "OIL",
+      "temporal_cv": 1.0313619102015352,
+      "mse_model": 771.8019466816587,
+      "mse_constant": 820.466878,
+      "mse_ratio": 0.9406862938367864,
+      "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE-t-Student": {
+      "model": "LSTM-SSE-t-Student",
+      "series": "OIL",
+      "temporal_cv": 0.17787374066893805,
+      "mse_model": 847.7912609989419,
+      "mse_constant": 820.466878,
+      "mse_ratio": 1.0333034565216683,
+      "cross_seed_mse_relstd": 0.01817611528049473,
+      "degenerate": true
+    }
+  }
+}

@@ -1,0 +1,24 @@
+\begin{table}[ht]
+\centering
+\caption{Table 9. OOS Forecasting Performance — OIL}
+\label{tab:oos_oil}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 & DEGENERATE \\
+\midrule
+\multicolumn{10}{l}{\textbf{Panel A}} \\
+ARCH(1) & 868.56747 & 29.47147 & 11.67639 & -0.0612 & 3.37404 & -2.4389 & +14.80\% & No & DEGENERATE \\
+GARCH(1,1) & \textbf{756.57655} & \textbf{27.50594} & 11.18035 & \textbf{0.0756} & 2.95819 & -2.3686 & — & Yes & ok \\
+EGARCH(1,1) & 759.73107 & 27.56322 & 10.75214 & 0.0718 & 2.99178 & -2.3726 & +0.42\% & Yes & ok \\
+GJR-GARCH(1,1) & 801.57229 & 28.31205 & 11.49555 & 0.0207 & 3.11456 & -2.3946 & +5.95\% & No & ok \\
+FIGARCH(1,d,1) & 770.20491 & 27.75257 & 12.15618 & 0.0590 & \textbf{2.95345} & \textbf{-2.3683} & +1.80\% & Yes & ok \\
+HAR & 771.80195 & 27.78132 & 11.50295 & 0.0570 & 2.97175 & -2.3705 & +2.01\% & Yes & ok \\
+\multicolumn{10}{l}{\textbf{Panel B}} \\
+\multicolumn{10}{l}{\textbf{Panel C}} \\
+LSTM-SSE-t-Student & 847.79126 ± 15.42319 & 29.11686 & \textbf{9.88789 ± 0.10520} & -0.0358 & 3.73831 & -2.5040 & +12.06\% & No & DEGENERATE \\
+\multicolumn{10}{l}{\textbf{Panel D}} \\
+Constant (unconditional variance) & 820.46688 & 28.64379 & 11.96965 & -0.0024 & 3.34013 & -2.4645 & +8.44\% & No & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 279 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Panel D: fixed at the training-split unconditional variance -- the minimum bar every other model should beat. DEGENERATE (src.eval.degeneracy): temporal coefficient of variation of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant forecast. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

@@ -1,0 +1,12 @@
+{
+  "lstm_units": 128,
+  "dropout": 0.1,
+  "batch_size": 128,
+  "learning_rate": 0.001,
+  "window_size": 22,
+  "nu_mode": "learned",
+  "nu_rho_init": 2.9489308190572983,
+  "lam": 0.1,
+  "s_sse": 4.345341058892237,
+  "s_t": 0.5499763797471606
+}

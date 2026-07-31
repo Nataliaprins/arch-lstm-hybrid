@@ -1,0 +1,39 @@
+\begin{table}[ht]
+\centering
+\caption{Table A3. Parameter Estimates — DJIA}
+\label{tab:est_djia}
+\begin{tabular}{lrrrrrrr}
+\toprule
+ & ARCH(1) & GARCH(1,1) & EGARCH(1,1) & GJR-GARCH(1,1) & FIGARCH(1,d,1) & HAR & MSGARCH(1,1) \\
+\midrule
+omega & 0.7082 & 0.0219 & 0.0097 & 0.0226 & 0.0321 & — & — \\
+alpha[1] & 0.5764 & 0.1686 & 0.3121 & 0.0280 & — & — & — \\
+gamma[1] & — & — & — & 0.2136 & — & — & — \\
+beta[1] & — & 0.8235 & 0.9716 & 0.8453 & — & — & — \\
+phi[1] & — & — & — & — & — & — & — \\
+d & — & — & — & — & 0.5309 & — & — \\
+const & — & — & — & — & — & 0.3329 & — \\
+beta_d & — & — & — & — & — & 0.1366 & — \\
+beta_w & — & — & — & — & — & 0.5235 & — \\
+beta_m & — & — & — & — & — & 0.0868 & — \\
+alpha0_1 & — & — & — & — & — & — & — \\
+alpha1_1 & — & — & — & — & — & — & — \\
+beta_1 & — & — & — & — & — & — & — \\
+nu_1 & — & — & — & — & — & — & — \\
+alpha0_2 & — & — & — & — & — & — & — \\
+alpha1_2 & — & — & — & — & — & — & — \\
+beta_2 & — & — & — & — & — & — & — \\
+nu_2 & — & — & — & — & — & — & — \\
+P_1_1 & — & — & — & — & — & — & — \\
+P_2_1 & — & — & — & — & — & — & — \\
+nu & 3.2997 & 5.5344 & 5.4432 & 5.8257 & 5.6072 & — & — \\
+LL_insample & -2895.4199 & -2727.0681 & -2731.7109 & -2699.4902 & -2719.8261 & -6898.7906 & — \\
+AIC & 5798.8398 & 5464.1362 & 5473.4218 & 5410.9803 & 5451.6521 & 13805.5811 & — \\
+BIC & 5821.6753 & 5492.6805 & 5501.9661 & 5445.2335 & 5485.9053 & 13828.3769 & — \\
+convergence & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & — \\
+hess_pd & — & — & — & — & — & — & — \\
+n_obs & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2206.0000 & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Series: DJIA. Returns in 100×log-ret (pp). All parametric models: Student-t innovations. '—' = parameter not defined in this specification. LL_insample: total log-likelihood on training sample. Standard errors: Bollerslev–Wooldridge robust. *** p<0.01.
+\end{table}

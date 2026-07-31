@@ -1,0 +1,76 @@
+# ── config_parallel_sp500.yaml — corrida paralela de SP500 junto al proceso principal ──
+# Copia de config.yaml restringida a la serie SP500, con su propio logs/ para no
+# chocar con las escrituras (train_run_status.csv, loss_scales.log,
+# nu_comparison.log) del proceso principal ni del paralelo de DJIA.
+# paths.models apunta al MISMO outputs/models compartido, así que cuando el
+# proceso principal llegue a SP500 detectará los artefactos ya completos y la
+# saltará automáticamente (lógica de resumibilidad ya existente en
+# tune_and_train.py).
+
+paths:
+  raw_data:       data/raw
+  processed_data: data/processed
+  outputs:        outputs
+  tables:         outputs/tables
+  figures:        outputs/figures
+  models:         outputs/models
+  logs:           logs/parallel_sp500
+  stamps:         .stamps
+
+series:
+  - name:   SP500
+    ticker:  "^GSPC"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+
+split:
+  train_frac: 0.80
+  val_frac:   0.10
+
+seed: 42
+n_seeds: 10
+
+returns_scale: 100
+
+data:
+  window: 22
+  input_scaling: unconditional
+
+hyperparameter_search:
+  lstm_units:    [16, 32, 64, 128]
+  nu:            [3, 4, 5, 6, 7, 8]
+  dropout:       [0.0, 0.1, 0.2, 0.3]
+  lambda_values: [0.1, 0.3, 0.5, 0.7, 0.9]
+  batch_size:    [32, 64, 128]
+  max_epochs:    1000
+  patience:      20
+  n_trials:      50
+  cv_splits:     5
+  full_batch_max_epochs: 3000
+  full_batch_patience:   300
+
+lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+
+mcs:
+  level:       0.90
+  n_bootstrap: 10000
+  block_size:  20
+
+dm_test:
+  bandwidth: null
+
+tost:
+  delta_pct: 0.02
+
+var_confidence_levels: [0.99, 0.975]
+
+unconditional_var_tolerance: 0.20
+
+loss:
+  normalize: true
+
+model:
+  nu_mode: learned
+  full_batch_training: true
+
+train_only_models: [lstm_t_student]

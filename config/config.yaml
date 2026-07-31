@@ -28,6 +28,14 @@ series:
     ticker:  "^GSPC"
     start:  "2015-06-01"
     end:    "2026-07-01"
+  - name:   GOLD
+    ticker:  "GC=F"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+  - name:   OIL
+    ticker:  "CL=F"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
 
 split:
   train_frac: 0.80
@@ -105,6 +113,7 @@ model:
   full_batch_training: true   # batch_size=n_train (solo lstm_t_student, ver hyperparameter_search.full_batch_*)
                                # validado en BTC-USD/ETH-USD: no degenera, backtests VaR/ES limpios (2026-07-30)
 
-# ── Reentrenar solo el modelo propuesto en las 4 series (batch completo) ──
-# Los otros 7 modelos ya tienen resultados válidos y no se re-corren.
+# ── Reentrenar solo el modelo propuesto en las 6 series (batch completo) ──
+# Los otros 6 modelos econométricos ya tienen resultados válidos y no se
+# re-corren (MSGARCH nunca corrió -- R no está instalado en este entorno).
 train_only_models: [lstm_t_student]

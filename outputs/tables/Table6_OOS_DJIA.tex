@@ -1,0 +1,24 @@
+\begin{table}[ht]
+\centering
+\caption{Table 6. OOS Forecasting Performance — DJIA}
+\label{tab:oos_djia}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 & DEGENERATE \\
+\midrule
+\multicolumn{10}{l}{\textbf{Panel A}} \\
+ARCH(1) & 1.52674 & 1.23561 & 0.91270 & -0.4999 & 0.61887 & -1.1870 & +38.55\% & Yes & DEGENERATE \\
+GARCH(1,1) & 1.10194 & 1.04973 & 0.71119 & -0.0826 & 0.54932 & -1.1756 & — & Yes & ok \\
+EGARCH(1,1) & 1.10436 & 1.05089 & 0.72305 & -0.0850 & 0.56111 & -1.1745 & +0.22\% & Yes & ok \\
+GJR-GARCH(1,1) & \textbf{1.03542} & \textbf{1.01755} & \textbf{0.66871} & \textbf{-0.0172} & \textbf{0.50494} & \textbf{-1.1595} & -6.04\% & Yes & ok \\
+FIGARCH(1,d,1) & 1.09695 & 1.04735 & 0.68225 & -0.0777 & 0.56333 & -1.1814 & -0.45\% & Yes & ok \\
+HAR & 1.13325 & 1.06454 & 0.74960 & -0.1133 & 0.54099 & -1.1710 & +2.84\% & Yes & ok \\
+\multicolumn{10}{l}{\textbf{Panel B}} \\
+\multicolumn{10}{l}{\textbf{Panel C}} \\
+LSTM-SSE-t-Student & 1.16599 ± 0.02378 & 1.07981 & 0.85428 ± 0.01992 & -0.1455 & 0.60425 & -1.1835 & +5.81\% & Yes & DEGENERATE \\
+\multicolumn{10}{l}{\textbf{Panel D}} \\
+Constant (unconditional variance) & 1.51004 & 1.22884 & 1.07183 & -0.4835 & 0.73318 & -1.2249 & +37.03\% & No & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 279 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Panel D: fixed at the training-split unconditional variance -- the minimum bar every other model should beat. DEGENERATE (src.eval.degeneracy): temporal coefficient of variation of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant forecast. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

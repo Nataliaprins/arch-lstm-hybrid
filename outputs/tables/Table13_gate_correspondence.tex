@@ -1,0 +1,18 @@
+\begin{table}[ht]
+\centering
+\caption{Table 13. LSTM Gate <-> GARCH Parameter Correspondence}
+\label{tab:gate_correspondence}
+\begin{tabular}{lrrrrrrrrrrrrrrrrrr}
+\toprule
+ & E[i_t] & sd[i_t] (across seeds) & E[f_t] & sd[f_t] (across seeds) & corr(i_t, eps2_t) & corr(f_t, eps2_t) & alpha_implied & alpha_hat (GARCH-t) & beta_implied & beta_hat (GARCH-t) & Persistence (implied) & Persistence (GARCH-t) & Half-life implied (days) & Half-life GARCH-t (days) & Pearson r(LSTM,GARCH) & b (slope) & b 95% CI & CI contains 1 \\
+\midrule
+BTC-USD & 0.5483 & 0.0085 & 0.7635 & 0.0056 & 0.0125 & -0.0152 & 0.5483 & 0.1065 & 0.7635 & 0.8935 & 1.3117 & 1.0000 & 2.6 & 6.2 & 0.3396 & 0.0689 & [-0.0320, 0.1698] & No \\
+ETH-USD & 0.5754 & 0.0107 & 0.7809 & 0.0077 & 0.0080 & 0.0025 & 0.5754 & 0.1000 & 0.7809 & 0.9000 & 1.3563 & 1.0000 & 2.8 & 6.6 & 0.1319 & 0.0249 & [-0.0557, 0.1056] & No \\
+DJIA & 0.4990 & 0.0054 & 0.7277 & 0.0031 & -0.0239 & -0.0278 & 0.4990 & 0.1686 & 0.7277 & 0.8235 & 1.2268 & 0.9922 & 2.2 & 3.6 & -0.4316 & -0.0133 & [-0.0204, -0.0063] & No \\
+SP500 & 0.5009 & 0.0071 & 0.7285 & 0.0035 & -0.0508 & -0.0552 & 0.5009 & 0.1703 & 0.7285 & 0.8297 & 1.2294 & 1.0000 & 2.2 & 3.7 & -0.3423 & -0.0019 & [-0.0032, -0.0006] & No \\
+GOLD & 0.4962 & 0.0020 & 0.7227 & 0.0028 & -0.1024 & -0.1119 & 0.4962 & 0.0279 & 0.7227 & 0.9624 & 1.2188 & 0.9903 & 2.1 & 18.1 & 0.6660 & 0.0158 & [0.0108, 0.0208] & No \\
+OIL & 0.5378 & 0.0106 & 0.7517 & 0.0056 & 0.0534 & -0.1867 & 0.5378 & 0.1105 & 0.7517 & 0.8585 & 1.2895 & 0.9690 & 2.4 & 4.5 & 0.1595 & 0.0128 & [-0.0100, 0.0357] & No \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} E[i_t]/E[f_t]: mean input/forget gate activation over the OOS test windows, averaged across seeds (reconstructed forward pass -- Keras does not expose intermediate gate activations). alpha\_implied = E[i\_t], beta\_implied = E[f\_t] under Proposition 2's mapping (exact only when gates are structurally constant, as in Section 7's Rung 1; sd[i\_t]/sd[f\_t] measure how close the free-gate trained model stays to that regime -- see src.eval.gate\_correspondence module docstring for the full derivation). sigma2\_LSTM = a + b*sigma2\_GARCH (HAC SE): equivalence predicts b~=1; 'CI contains 1' is a direct, assumption-light equivalence check independent of the gate-mean mapping above.
+\end{table}

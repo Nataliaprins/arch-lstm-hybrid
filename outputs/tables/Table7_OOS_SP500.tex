@@ -1,0 +1,24 @@
+\begin{table}[ht]
+\centering
+\caption{Table 7. OOS Forecasting Performance — SP500}
+\label{tab:oos_sp500}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 & DEGENERATE \\
+\midrule
+\multicolumn{10}{l}{\textbf{Panel A}} \\
+ARCH(1) & 2.00740 & 1.41683 & 1.01764 & -0.5981 & 0.67303 & -1.2020 & +51.30\% & Yes & DEGENERATE \\
+GARCH(1,1) & 1.32676 & 1.15185 & 0.70795 & -0.0562 & 0.58989 & -1.1537 & — & Yes & ok \\
+EGARCH(1,1) & 1.33180 & 1.15404 & 0.72673 & -0.0602 & 0.59146 & -1.1570 & +0.38\% & Yes & ok \\
+GJR-GARCH(1,1) & \textbf{1.27924} & \textbf{1.13104} & 0.69498 & \textbf{-0.0184} & \textbf{0.53541} & \textbf{-1.1381} & -3.58\% & Yes & ok \\
+FIGARCH(1,d,1) & 1.30434 & 1.14208 & \textbf{0.68017} & -0.0384 & 0.57223 & -1.1548 & -1.69\% & Yes & ok \\
+HAR & 1.40238 & 1.18422 & 0.76469 & -0.1164 & 0.55637 & -1.1594 & +5.70\% & Yes & ok \\
+\multicolumn{10}{l}{\textbf{Panel B}} \\
+\multicolumn{10}{l}{\textbf{Panel C}} \\
+LSTM-SSE-t-Student & 1.63309 ± 0.00089 & 1.27793 & 1.05065 ± 0.00045 & -0.3001 & 0.71299 & -1.2152 & +23.09\% & Yes & DEGENERATE \\
+\multicolumn{10}{l}{\textbf{Panel D}} \\
+Constant (unconditional variance) & 1.78570 & 1.33630 & 1.13381 & -0.4216 & 0.75874 & -1.2312 & +34.59\% & Yes & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 279 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Panel D: fixed at the training-split unconditional variance -- the minimum bar every other model should beat. DEGENERATE (src.eval.degeneracy): temporal coefficient of variation of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant forecast. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

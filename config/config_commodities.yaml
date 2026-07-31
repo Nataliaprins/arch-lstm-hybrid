@@ -1,0 +1,88 @@
+# ── config_commodities.yaml — nuevo mercado: Oro y Petróleo ────────────────
+# Copia de config.yaml restringida a las series GOLD/OIL (commodities), con su
+# propio logs/ para no chocar con las escrituras del proceso principal (que
+# cubre BTC-USD/ETH-USD/DJIA/SP500). Mismas fechas que los índices accionarios
+# (DJIA/SP500: 2015-06-01 → 2026-07-01) para que las cuatro series sean
+# directamente comparables en las tablas cruzadas.
+# paths.models/paths.processed_data apuntan a los directorios COMPARTIDOS
+# (outputs/models/<modelo>/GOLD|OIL, data/processed/GOLD|OIL), que no existen
+# para ninguna otra serie -- no hay riesgo de pisar BTC-USD/ETH-USD/DJIA/SP500.
+#
+# Uso:
+#   python -m src.data.build_dataset   --config config/config_commodities.yaml
+#   python -m src.models.run_econometric --config config/config_commodities.yaml
+#   python -m src.models.garch_init      --config config/config_commodities.yaml
+# (el entrenamiento neuronal usa config_parallel_gold.yaml / config_parallel_oil.yaml
+#  por separado, para poder correr GOLD y OIL en paralelo en la GPU)
+
+paths:
+  raw_data:       data/raw
+  processed_data: data/processed
+  outputs:        outputs
+  tables:         outputs/tables
+  figures:        outputs/figures
+  models:         outputs/models
+  logs:           logs/commodities
+  stamps:         .stamps
+
+series:
+  - name:   GOLD
+    ticker:  "GC=F"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+  - name:   OIL
+    ticker:  "CL=F"
+    start:  "2015-06-01"
+    end:    "2026-07-01"
+
+split:
+  train_frac: 0.80
+  val_frac:   0.10
+
+seed: 42
+n_seeds: 10
+
+returns_scale: 100
+
+data:
+  window: 22
+  input_scaling: unconditional
+
+hyperparameter_search:
+  lstm_units:    [16, 32, 64, 128]
+  nu:            [3, 4, 5, 6, 7, 8]
+  dropout:       [0.0, 0.1, 0.2, 0.3]
+  lambda_values: [0.1, 0.3, 0.5, 0.7, 0.9]
+  batch_size:    [32, 64, 128]
+  max_epochs:    1000
+  patience:      20
+  n_trials:      50
+  cv_splits:     5
+  full_batch_max_epochs: 3000
+  full_batch_patience:   300
+
+lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+
+mcs:
+  level:       0.90
+  n_bootstrap: 10000
+  block_size:  20
+
+dm_test:
+  bandwidth: null
+
+tost:
+  delta_pct: 0.02
+
+var_confidence_levels: [0.99, 0.975]
+
+unconditional_var_tolerance: 0.20
+
+loss:
+  normalize: true
+
+model:
+  nu_mode: learned
+  full_batch_training: true
+
+train_only_models: [lstm_t_student]

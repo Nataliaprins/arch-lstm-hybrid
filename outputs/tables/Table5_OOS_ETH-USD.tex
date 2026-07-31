@@ -1,0 +1,24 @@
+\begin{table}[ht]
+\centering
+\caption{Table 5. OOS Forecasting Performance — ETH-USD}
+\label{tab:oos_eth-usd}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+ & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 & DEGENERATE \\
+\midrule
+\multicolumn{10}{l}{\textbf{Panel A}} \\
+ARCH(1) & 947.68212 & 30.78445 & 23.06189 & -0.2357 & 3.70269 & -2.6910 & +19.91\% & No & DEGENERATE \\
+GARCH(1,1) & 790.35851 & 28.11332 & 16.83860 & -0.0305 & 3.50586 & -2.6133 & — & Yes & ok \\
+EGARCH(1,1) & 785.88237 & 28.03359 & 16.90163 & -0.0247 & 3.51932 & -2.6179 & -0.57\% & Yes & ok \\
+GJR-GARCH(1,1) & 790.26054 & 28.11157 & 16.71085 & -0.0304 & 3.50849 & -2.6138 & -0.01\% & Yes & ok \\
+FIGARCH(1,d,1) & \textbf{758.47825} & \textbf{27.54048} & \textbf{15.45276} & \textbf{0.0110} & \textbf{3.47468} & \textbf{-2.6010} & -4.03\% & Yes & ok \\
+HAR & 772.91098 & 27.80128 & 17.77215 & -0.0078 & 3.54068 & -2.6298 & -2.21\% & Yes & ok \\
+\multicolumn{10}{l}{\textbf{Panel B}} \\
+\multicolumn{10}{l}{\textbf{Panel C}} \\
+LSTM-SSE-t-Student & 774.73053 ± 12.05844 & 27.83398 & 15.87011 ± 0.38029 & -0.0102 & 3.54347 & -2.6228 & -1.98\% & Yes & ok \\
+\multicolumn{10}{l}{\textbf{Panel D}} \\
+Constant (unconditional variance) & 852.79585 & 29.20267 & 20.50793 & -0.1119 & 3.65191 & -2.6712 & +7.90\% & No & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} OOS window: 316 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Panel D: fixed at the training-split unconditional variance -- the minimum bar every other model should beat. DEGENERATE (src.eval.degeneracy): temporal coefficient of variation of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant forecast. Standard errors Bollerslev–Wooldridge; *** p<0.01.
+\end{table}

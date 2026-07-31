@@ -1,0 +1,15 @@
+\begin{table}[ht]
+\centering
+\caption{Table 10. Forecast-Encompassing Tests}
+\label{tab:encompassing}
+\begin{tabular}{lrrrrrrrrrrrr}
+\toprule
+ & ('BTC-USD', 'β_cand') & ('BTC-USD', 'verdict') & ('ETH-USD', 'β_cand') & ('ETH-USD', 'verdict') & ('DJIA', 'β_cand') & ('DJIA', 'verdict') & ('SP500', 'β_cand') & ('SP500', 'verdict') & ('GOLD', 'β_cand') & ('GOLD', 'verdict') & ('OIL', 'β_cand') & ('OIL', 'verdict') \\
+\midrule
+LSTM-SSE-t-Student vs. ARCH(1) & 0.801 & Benchmark suff. & 0.532 & Neither sig. & -4.710 & Neither sig. & -58.030** & Adds info & 35.814** & Adds info & 4.844** & Adds info \\
+LSTM-SSE-t-Student vs. GARCH(1,1) & -0.484 & Neither sig. & -0.393 & Neither sig. & -2.394 & Neither sig. & -43.039 & Neither sig. & 25.934 & Neither sig. & 2.681 & Benchmark suff. \\
+NN-GARCH vs. GARCH(1,1) & — & n/a & — & n/a & — & n/a & — & n/a & — & n/a & — & n/a \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Forecast-encompassing regression: \varepsilon^2_t = b_0 + b_1 \sigma^2_{benchmark,t} + b_2 \sigma^2_{candidate,t} + u_t, HAC SE (Newey--West, bandwidth \lfloor 4(T/100)^{2/9} \rfloor). \beta_{cand}: coefficient on the candidate forecast (significance from its own HAC p-value). 'Adds info': candidate significant, benchmark not — benchmark is redundant given the candidate. 'Both contribute': both significant — complementary information. 'Benchmark suff.': candidate carries no information beyond the benchmark. 'Neither sig.': inconclusive (often collinearity). Significance: *** p<0.01, ** p<0.05, * p<0.10.
+\end{table}

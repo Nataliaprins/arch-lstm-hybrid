@@ -6,7 +6,9 @@ statsmodels==0.14.2
 scikit-learn==1.5.1
 
 # Financial data
-yfinance==0.2.43
+# 0.2.43 stopped working against Yahoo's current API (JSONDecodeError on every
+# request, incl. cached tickers) -- bumped to unblock GOLD/OIL download 2026-07-31.
+yfinance==1.5.2
 
 # Econometric volatility models
 arch==7.0.0

@@ -1,0 +1,10 @@
+{
+  "LL_insample": -2895.419921518525,
+  "AIC": 5798.83984303705,
+  "BIC": 5821.675281441238,
+  "convergence": 0,
+  "hess_pd": null,
+  "n_obs": 2228,
+  "fit_seconds": 0.105,
+  "n_params": 4
+}

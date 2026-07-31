@@ -21,7 +21,9 @@ dependencies:
   # fit_info.json -- previously used but not declared here.
   - r-jsonlite=2.0.0
   - pip:
-    - yfinance==0.2.43
+    # 0.2.43 stopped working against Yahoo's current API (JSONDecodeError on
+    # every request) -- bumped to unblock GOLD/OIL download 2026-07-31.
+    - yfinance==1.5.2
     - arch==7.0.0
     - tensorflow==2.17.0
     - keras-tuner==1.4.7

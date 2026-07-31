@@ -1,0 +1,39 @@
+\begin{table}[ht]
+\centering
+\caption{Table A5. Parameter Estimates — GOLD}
+\label{tab:est_gold}
+\begin{tabular}{lrrrrrrr}
+\toprule
+ & ARCH(1) & GARCH(1,1) & EGARCH(1,1) & GJR-GARCH(1,1) & FIGARCH(1,d,1) & HAR & MSGARCH(1,1) \\
+\midrule
+omega & 0.8780 & 0.0094 & 0.0047 & 0.0120 & 0.1299 & — & — \\
+alpha[1] & 0.0249 & 0.0279 & 0.0804 & 0.0473 & — & — & — \\
+gamma[1] & — & — & — & -0.0288 & — & — & — \\
+beta[1] & — & 0.9624 & 0.9890 & 0.9555 & — & — & — \\
+phi[1] & — & — & — & — & — & — & — \\
+d & — & — & — & — & 0.2312 & — & — \\
+const & — & — & — & — & — & 0.3165 & — \\
+beta_d & — & — & — & — & — & 0.0319 & — \\
+beta_w & — & — & — & — & — & 0.0801 & — \\
+beta_m & — & — & — & — & — & 0.5120 & — \\
+alpha0_1 & — & — & — & — & — & — & — \\
+alpha1_1 & — & — & — & — & — & — & — \\
+beta_1 & — & — & — & — & — & — & — \\
+nu_1 & — & — & — & — & — & — & — \\
+alpha0_2 & — & — & — & — & — & — & — \\
+alpha1_2 & — & — & — & — & — & — & — \\
+beta_2 & — & — & — & — & — & — & — \\
+nu_2 & — & — & — & — & — & — & — \\
+P_1_1 & — & — & — & — & — & — & — \\
+P_2_1 & — & — & — & — & — & — & — \\
+nu & 3.6764 & 4.2536 & 4.2168 & 4.2469 & 4.3453 & — & — \\
+LL_insample & -2805.4644 & -2762.6453 & -2762.0556 & -2760.3181 & -2762.1105 & -4696.2489 & — \\
+AIC & 5618.9288 & 5535.2907 & 5534.1112 & 5532.6362 & 5536.2211 & 9400.4979 & — \\
+BIC & 5641.7643 & 5563.8350 & 5562.6555 & 5566.8894 & 5570.4742 & 9423.2936 & — \\
+convergence & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & — \\
+hess_pd & — & — & — & — & — & — & — \\
+n_obs & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2228.0000 & 2206.0000 & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Series: GOLD. Returns in 100×log-ret (pp). All parametric models: Student-t innovations. '—' = parameter not defined in this specification. LL_insample: total log-likelihood on training sample. Standard errors: Bollerslev–Wooldridge robust. *** p<0.01.
+\end{table}

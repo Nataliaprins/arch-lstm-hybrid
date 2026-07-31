@@ -1,0 +1,39 @@
+\begin{table}[ht]
+\centering
+\caption{Table A6. Parameter Estimates — OIL}
+\label{tab:est_oil}
+\begin{tabular}{lrrrrrrr}
+\toprule
+ & ARCH(1) & GARCH(1,1) & EGARCH(1,1) & GJR-GARCH(1,1) & FIGARCH(1,d,1) & HAR & MSGARCH(1,1) \\
+\midrule
+omega & 5.1393 & 0.2089 & 0.0569 & 0.1809 & 0.1362 & — & — \\
+alpha[1] & 0.3345 & 0.1105 & 0.2214 & 0.0439 & — & — & — \\
+gamma[1] & — & — & — & 0.1003 & — & — & — \\
+beta[1] & — & 0.8585 & 0.9721 & 0.8733 & — & — & — \\
+phi[1] & — & — & — & — & — & — & — \\
+d & — & — & — & — & 0.9897 & — & — \\
+const & — & — & — & — & — & 2.0926 & — \\
+beta_d & — & — & — & — & — & 0.1219 & — \\
+beta_w & — & — & — & — & — & 0.2328 & — \\
+beta_m & — & — & — & — & — & 0.4096 & — \\
+alpha0_1 & — & — & — & — & — & — & — \\
+alpha1_1 & — & — & — & — & — & — & — \\
+beta_1 & — & — & — & — & — & — & — \\
+nu_1 & — & — & — & — & — & — & — \\
+alpha0_2 & — & — & — & — & — & — & — \\
+alpha1_2 & — & — & — & — & — & — & — \\
+beta_2 & — & — & — & — & — & — & — \\
+nu_2 & — & — & — & — & — & — & — \\
+P_1_1 & — & — & — & — & — & — & — \\
+P_2_1 & — & — & — & — & — & — & — \\
+nu & 4.0175 & 6.4803 & 6.0595 & 6.9269 & 5.6131 & — & — \\
+LL_insample & -5095.5861 & -4986.9627 & -4991.2863 & -4977.2898 & -4991.1037 & -11298.1765 & — \\
+AIC & 10199.1721 & 9983.9255 & 9992.5726 & 9966.5796 & 9994.2074 & 22604.3530 & — \\
+BIC & 10222.0058 & 10012.4675 & 10021.1147 & 10000.8301 & 10028.4579 & 22627.1469 & — \\
+convergence & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & 0.0000 & — \\
+hess_pd & — & — & — & — & — & — & — \\
+n_obs & 2227.0000 & 2227.0000 & 2227.0000 & 2227.0000 & 2227.0000 & 2205.0000 & — \\
+\bottomrule
+\end{tabular}
+\\[3pt]\footnotesize\textit{Note:} Series: OIL. Returns in 100×log-ret (pp). All parametric models: Student-t innovations. '—' = parameter not defined in this specification. LL_insample: total log-likelihood on training sample. Standard errors: Bollerslev–Wooldridge robust. *** p<0.01.
+\end{table}

@@ -1,0 +1,224 @@
+{
+  "BTC-USD": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": 0.362432,
+      "se_benchmark": 0.096624,
+      "t_benchmark": 3.7509,
+      "p_benchmark": 0.0002,
+      "beta_candidate": 0.801135,
+      "se_candidate": 0.648447,
+      "t_candidate": 1.2355,
+      "p_candidate": 0.2167,
+      "r2": 0.1326,
+      "n_obs": 431,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "benchmark_sufficient"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.583256,
+      "se_benchmark": 0.371568,
+      "t_benchmark": 1.5697,
+      "p_benchmark": 0.1165,
+      "beta_candidate": -0.483591,
+      "se_candidate": 0.687653,
+      "t_candidate": -0.7032,
+      "p_candidate": 0.4819,
+      "r2": 0.0364,
+      "n_obs": 431,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  },
+  "ETH-USD": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": 0.51643,
+      "se_benchmark": 0.321745,
+      "t_benchmark": 1.6051,
+      "p_benchmark": 0.1085,
+      "beta_candidate": 0.531809,
+      "se_candidate": 0.805688,
+      "t_candidate": 0.6601,
+      "p_candidate": 0.5092,
+      "r2": 0.03,
+      "n_obs": 316,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.451251,
+      "se_benchmark": 0.280417,
+      "t_benchmark": 1.6092,
+      "p_benchmark": 0.1076,
+      "beta_candidate": -0.393039,
+      "se_candidate": 1.013856,
+      "t_candidate": -0.3877,
+      "p_candidate": 0.6983,
+      "r2": 0.0181,
+      "n_obs": 316,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  },
+  "DJIA": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": 0.065389,
+      "se_benchmark": 0.088889,
+      "t_benchmark": 0.7356,
+      "p_benchmark": 0.462,
+      "beta_candidate": -4.709834,
+      "se_candidate": 6.992733,
+      "t_candidate": -0.6735,
+      "p_candidate": 0.5006,
+      "r2": 0.0025,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.08589,
+      "se_benchmark": 0.172384,
+      "t_benchmark": 0.4982,
+      "p_benchmark": 0.6183,
+      "beta_candidate": -2.393707,
+      "se_candidate": 8.217671,
+      "t_candidate": -0.2913,
+      "p_candidate": 0.7708,
+      "r2": 0.0017,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  },
+  "SP500": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": -0.0091,
+      "se_benchmark": 0.076786,
+      "t_benchmark": -0.1185,
+      "p_benchmark": 0.9057,
+      "beta_candidate": -58.029979,
+      "se_candidate": 26.873067,
+      "t_candidate": -2.1594,
+      "p_candidate": 0.0308,
+      "r2": 0.0123,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "candidate_adds_info"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.226635,
+      "se_benchmark": 0.197479,
+      "t_benchmark": 1.1476,
+      "p_benchmark": 0.2511,
+      "beta_candidate": -43.038516,
+      "se_candidate": 27.239288,
+      "t_candidate": -1.58,
+      "p_candidate": 0.1141,
+      "r2": 0.018,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  },
+  "GOLD": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": -0.885181,
+      "se_benchmark": 0.786818,
+      "t_benchmark": -1.125,
+      "p_benchmark": 0.2606,
+      "beta_candidate": 35.813609,
+      "se_candidate": 14.683183,
+      "t_candidate": 2.4391,
+      "p_candidate": 0.0147,
+      "r2": 0.0167,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "candidate_adds_info"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.305335,
+      "se_benchmark": 0.362343,
+      "t_benchmark": 0.8427,
+      "p_benchmark": 0.3994,
+      "beta_candidate": 25.933927,
+      "se_candidate": 19.574196,
+      "t_candidate": 1.3249,
+      "p_candidate": 0.1852,
+      "r2": 0.0175,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  },
+  "OIL": {
+    "LSTM-SSE-t-Student_vs_ARCH(1)": {
+      "beta_benchmark": 0.308033,
+      "se_benchmark": 0.16833,
+      "t_benchmark": 1.8299,
+      "p_benchmark": 0.0673,
+      "beta_candidate": 4.844109,
+      "se_candidate": 2.228528,
+      "t_candidate": 2.1737,
+      "p_candidate": 0.0297,
+      "r2": 0.0242,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "candidate_adds_info"
+    },
+    "LSTM-SSE-t-Student_vs_GARCH(1,1)": {
+      "beta_benchmark": 0.791706,
+      "se_benchmark": 0.17881,
+      "t_benchmark": 4.4276,
+      "p_benchmark": 0.0,
+      "beta_candidate": 2.68127,
+      "se_candidate": 2.341595,
+      "t_candidate": 1.1451,
+      "p_candidate": 0.2522,
+      "r2": 0.0856,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "benchmark_sufficient"
+    },
+    "NN-GARCH_vs_GARCH(1,1)": {
+      "error": "missing_model",
+      "candidate_available": false,
+      "benchmark_available": true
+    }
+  }
+}
