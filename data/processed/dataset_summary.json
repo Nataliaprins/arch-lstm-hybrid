@@ -29,7 +29,7 @@
     "n_train": 2524,
     "n_val": 315,
     "n_test": 316,
-    "mu_train": 0.08007865521690159,
+    "mu_train": 0.08007865521690162,
     "train_var_eps": 21.732773580767336,
     "split_dates": {
       "train_start": "2017-11-10",
