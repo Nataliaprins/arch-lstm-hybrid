@@ -1,0 +1,5 @@
+Recomendación de orden de implementación
+Criterio de selección por NLL (mío) + init de bias por mercado (mío / 5b) — más baratos, sin conflicto, base sólida.
+Annealing de λ alto→bajo + warm-up de LR (ítem 4, dirección corregida) — ataca el mecanismo directamente, y como beneficio colateral debería destrabar el aprendizaje de ν (que hoy no se mueve del init).
+Log-varianza+softplus (ítem 1) + gradient clipping (ítem 3) — mejoras de estabilidad numérica, bajo riesgo, se pueden sumar en paralelo.
+L-BFGS como segunda etapa / validación (ítem 7) — dejar para cuando lo anterior esté estabilizado.
