@@ -59,6 +59,8 @@ hyperparameter_search:
   patience:      20    # early-stopping
   n_trials:      50    # ensayos Keras Tuner
   cv_splits:     5     # TimeSeriesSplit k-folds
+  full_batch_max_epochs: 3000   # solo si model.full_batch_training=true (solo lstm_t_student)
+  full_batch_patience:   300    # early-stopping cuenta gradientes, no minibatches -> paciencia mayor
 
 # ── Análisis de sensibilidad de λ (exigido por Jurado 1) ──
 lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
@@ -100,3 +102,9 @@ model:
                      # likelihood_search: ν seleccionado por verosimilitud Student-t OOS en validación
                      #   (nunca por MSE de validación) sobre hyperparameter_search.nu
                      # En ambos casos ν queda fuera del espacio de búsqueda del tuner.
+  full_batch_training: true   # batch_size=n_train (solo lstm_t_student, ver hyperparameter_search.full_batch_*)
+                               # validado en BTC-USD/ETH-USD: no degenera, backtests VaR/ES limpios (2026-07-30)
+
+# ── Reentrenar solo el modelo propuesto en las 4 series (batch completo) ──
+# Los otros 7 modelos ya tienen resultados válidos y no se re-corren.
+train_only_models: [lstm_t_student]
