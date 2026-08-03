@@ -2,24 +2,24 @@ Series,Rung,"alpha (or E[i_t], Table 11)","beta (or E[f_t], Table 11)",omega,nu,
 BTC-USD,"0 — GARCH(1,1)-t (MLE)",0.1065,0.8935,0.1600,3.169,1.0000,6.2,2.4961,-2.1138,—
 BTC-USD,1 — Constrained LSTM (pure Student-t MLE),0.1005,0.8647,0.3359,26.097,0.9652,4.8,2.4945,-2.1525,—
 BTC-USD,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-BTC-USD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,2.6368,-2.1520,—
+BTC-USD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,2.6084,-2.1556,—
 ETH-USD,"0 — GARCH(1,1)-t (MLE)",0.1000,0.9000,0.3901,3.350,1.0000,6.6,3.5059,-2.5971,—
 ETH-USD,1 — Constrained LSTM (pure Student-t MLE),0.0549,0.9257,0.3234,42.476,0.9806,9.0,3.4830,-2.6492,—
 ETH-USD,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-ETH-USD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,3.5435,-2.6228,—
+ETH-USD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,3.4821,-2.6087,—
 DJIA,"0 — GARCH(1,1)-t (MLE)",0.1686,0.8235,0.0219,5.534,0.9922,3.6,0.5493,-1.1748,—
 DJIA,1 — Constrained LSTM (pure Student-t MLE),0.1813,0.7841,0.0400,500.000,0.9655,2.9,0.5454,-1.1911,—
 DJIA,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-DJIA,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,0.6042,-1.1835,—
+DJIA,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,0.6219,-1.1889,—
 SP500,"0 — GARCH(1,1)-t (MLE)",0.1703,0.8297,0.0179,5.605,1.0000,3.7,0.5899,-1.1537,—
 SP500,1 — Constrained LSTM (pure Student-t MLE),0.1743,0.8007,0.0358,500.000,0.9750,3.1,0.5635,-1.1990,—
 SP500,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-SP500,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,0.7130,-1.2152,—
+SP500,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,0.6331,-1.1886,—
 GOLD,"0 — GARCH(1,1)-t (MLE)",0.0279,0.9624,0.0094,4.254,0.9903,18.1,2.0361,-1.8311,—
 GOLD,1 — Constrained LSTM (pure Student-t MLE),0.0365,0.9487,0.0133,500.000,0.9852,13.2,2.0287,-1.9265,—
 GOLD,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-GOLD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,2.9752,-1.9942,—
+GOLD,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,2.8735,-1.9826,—
 OIL,"0 — GARCH(1,1)-t (MLE)",0.1105,0.8585,0.2089,6.480,0.9690,4.5,2.9582,-2.3678,—
 OIL,1 — Constrained LSTM (pure Student-t MLE),0.1288,0.8354,0.2458,500.000,0.9643,3.9,2.9557,-2.3959,—
 OIL,"2 — LSTM-SSE (free gates, SSE loss)",—,—,—,—,—,—,—,—,—
-OIL,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,3.7383,-2.5040,—
+OIL,3 — LSTM-SSE-t-Student (proposed),—,—,—,—,—,—,3.2764,-2.4362,—

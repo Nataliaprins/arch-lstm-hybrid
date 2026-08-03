@@ -45,7 +45,7 @@ n_seeds: 10
 returns_scale: 100
 
 data:
-  window: 22
+  window: 5
   input_scaling: unconditional
 
 hyperparameter_search:
@@ -58,7 +58,7 @@ hyperparameter_search:
   patience:      20
   n_trials:      50
   cv_splits:     5
-  full_batch_max_epochs: 3000
+  full_batch_max_epochs: 5000
   full_batch_patience:   300
 
 lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
@@ -84,5 +84,14 @@ loss:
 model:
   nu_mode: learned
   full_batch_training: true
+  adaptive_lr: true
+  # ── Levers experimentales contra el colapso (2026-08-01, PENDIENTE DE CORRER) ──
+  # ver config/config.yaml para el detalle de qué se probó hoy y por qué.
+  grad_noise: true
+  lam_anneal: true
+  lam_start: 0.1
+  lam_end: 0.9
+  lam_anneal_steps: 200
+  use_qlike: true
 
 train_only_models: [lstm_t_student]

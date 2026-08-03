@@ -293,7 +293,7 @@ def _compute_and_log_loss_scales(
         scales = compute_loss_scales(train_eps2)
     else:
         scales = {
-            "s_sse": 1.0, "s_t": 1.0,
+            "s_sse": 1.0, "s_t": 1.0, "s_qlike": 1.0,
             "sigma2_const": float(np.mean(train_eps2)),
             "nu_ref": None, "ratio_s_sse_over_s_t": 1.0,
         }
@@ -458,6 +458,7 @@ def _sample_hp(
     model_type: str,
     loss_scales: dict | None = None,
     nu_hp: dict | None = None,
+    extra_hp: dict | None = None,
 ) -> dict:
     """Sample one hyperparameter configuration from the search space."""
     hp = {
@@ -480,8 +481,14 @@ def _sample_hp(
             hp["nu"] = int(rng.choice(search_space["nu"]))
         hp["lam"] = float(rng.choice(search_space["lambda_values"]))
         if loss_scales is not None:
-            hp["s_sse"] = loss_scales["s_sse"]
-            hp["s_t"]   = loss_scales["s_t"]
+            hp["s_sse"]   = loss_scales["s_sse"]
+            hp["s_t"]     = loss_scales["s_t"]
+            hp["s_qlike"] = loss_scales.get("s_qlike", 1.0)
+        # Collapse-fix (2026-07-31): adaptive_lr / lr_* schedule overrides,
+        # fixed by the caller (from model.adaptive_lr in config), not
+        # searched over -- same passthrough pattern as nu_hp above.
+        if extra_hp is not None:
+            hp.update(extra_hp)
     return hp
 
 
@@ -555,6 +562,7 @@ def _random_search(
     val_frac: float = 0.15,
     loss_scales: dict | None = None,
     nu_hp: dict | None = None,
+    extra_hp: dict | None = None,
     full_batch: bool = False,
     search_epochs_cap: int = 200,
 ) -> dict:
@@ -578,29 +586,41 @@ def _random_search(
 
     best_val_loss = np.inf
     best_hp       = None
+    t_search      = time.perf_counter()
 
     for trial in range(n_trials):
         hp = _sample_hp(rng, search_space, window_size, model_type,
-                         loss_scales=loss_scales, nu_hp=nu_hp)
+                         loss_scales=loss_scales, nu_hp=nu_hp, extra_hp=extra_hp)
         seed_t = int(rng.integers(0, 2**31))
+        t_trial = time.perf_counter()
         try:
-            _, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
+            model, hist = _train_one(build_fn, hp, X_tr, y_tr, X_v, y_v,
                                   seed=seed_t, patience=patience,
                                   max_epochs=min(max_epochs, search_epochs_cap),
                                   full_batch=full_batch)
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            score = min(hist["val_loss"])
+            n_ep  = len(hist["val_loss"])
+            trial_secs = time.perf_counter() - t_trial
+            elapsed    = time.perf_counter() - t_search
+            is_best = np.isfinite(score) and score < best_val_loss
+            if is_best:
+                best_val_loss = score
                 best_hp       = hp.copy()
-                log.debug("  trial %02d  val_loss=%.6f  hp=%s", trial, val_loss, hp)
+            eta = trial_secs * (n_trials - trial - 1)
+            log.info(
+                "  trial %02d/%d  val_loss=%.6f  epochs=%d  %.1fs  "
+                "elapsed=%.0fs  eta=%.0fs%s",
+                trial + 1, n_trials, score, n_ep, trial_secs, elapsed, eta,
+                "  <- NEW BEST" if is_best else "",
+            )
         except Exception as exc:
-            log.debug("  trial %02d  failed: %s", trial, exc)
+            log.warning("  trial %02d/%d  FAILED: %s", trial + 1, n_trials, exc)
 
     if best_hp is None:
         # Fallback to default
         best_hp = _sample_hp(
             np.random.default_rng(base_seed), search_space, window_size, model_type,
-            loss_scales=loss_scales, nu_hp=nu_hp,
+            loss_scales=loss_scales, nu_hp=nu_hp, extra_hp=extra_hp,
         )
     log.info("  Best hp: %s  (val_loss=%.6f)", best_hp, best_val_loss)
     return best_hp
@@ -797,6 +817,46 @@ def _run_model_series(
         log.info("  [SVR-GARCH] done  fit=%.1fs", fit_secs)
         return
 
+    # Collapse-fix (2026-07-31, revised 2026-08-01): opt-in adaptive LR
+    # schedule (warm-up + plain cosine decay, see
+    # neural._make_adaptive_lr_schedule), fixed by config -- not searched
+    # over. Scoped to lstm_t_student only, same as full_batch_training.
+    extra_hp = None
+    if model_key == "lstm_t_student":
+        model_cfg = cfg.get("model", {})
+        extra_hp = {}
+        if bool(model_cfg.get("adaptive_lr", False)):
+            extra_hp["adaptive_lr"] = True
+            log.info("  [%s] adaptive_lr=True -> warm-up + cosine-decay LR schedule", model_key)
+        # Experimental collapse-fix levers (2026-08-01), opt-in via config,
+        # off by default -- see build_lstm_t_student's docstring for each.
+        # Tested individually/cheaply today: use_qlike helped ETH-USD/DJIA/
+        # SP500 but badly destabilized OIL (mse_ratio 11.6x); grad_noise and
+        # lam_anneal alone gave flat results on DJIA. Wired here so config
+        # controls them, NOT auto-tuned per series -- caller is responsible
+        # for deciding which series should actually use this combination
+        # before running.
+        if bool(model_cfg.get("grad_noise", False)):
+            extra_hp["grad_noise"] = True
+            extra_hp["grad_noise_eta"] = float(model_cfg.get("grad_noise_eta", 0.3))
+            extra_hp["grad_noise_gamma"] = float(model_cfg.get("grad_noise_gamma", 0.55))
+            log.info("  [%s] grad_noise=True (eta=%.3g, gamma=%.3g)",
+                     model_key, extra_hp["grad_noise_eta"], extra_hp["grad_noise_gamma"])
+        if bool(model_cfg.get("lam_anneal", False)):
+            extra_hp["lam_anneal"] = True
+            extra_hp["lam_start"] = float(model_cfg.get("lam_start", 0.1))
+            if "lam_end" in model_cfg:
+                extra_hp["lam_end"] = float(model_cfg["lam_end"])
+            extra_hp["lam_anneal_steps"] = int(model_cfg.get("lam_anneal_steps", 1000))
+            log.info("  [%s] lam_anneal=True (lam_start=%.3g, lam_end=%s, steps=%d)",
+                     model_key, extra_hp["lam_start"], extra_hp.get("lam_end", "hp['lam']"),
+                     extra_hp["lam_anneal_steps"])
+        if bool(model_cfg.get("use_qlike", False)):
+            extra_hp["use_qlike"] = True
+            log.info("  [%s] use_qlike=True -> SSE term replaced by QLIKE (Patton 2011)", model_key)
+        if not extra_hp:
+            extra_hp = None
+
     # Section 8: resolve nu handling for the proposed model before the
     # hyperparameter search runs (nu is no longer part of that search).
     nu_hp = None
@@ -834,6 +894,7 @@ def _run_model_series(
         val_frac=0.15,
         loss_scales=loss_scales if model_key == "lstm_t_student" else None,
         nu_hp=nu_hp,
+        extra_hp=extra_hp,
         full_batch=full_batch,
         search_epochs_cap=(max_epochs if full_batch else 200),
     )

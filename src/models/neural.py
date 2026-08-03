@@ -89,8 +89,71 @@ def build_lstm_sse(hp: dict) -> "tf.keras.Model":
 # build_lstm_t_student  (LSTM-SSE-t-Student — proposed model)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _make_adaptive_lr_schedule(hp: dict):
+    """
+    Warm-up (linear) + plain cosine decay learning-rate schedule, opt-in
+    via hp["adaptive_lr"]=True.
+
+    Originally (2026-07-31) this used cosine-decay-*with-restarts* (SGDR,
+    Loshchilov & Hutter 2017), on the theory that periodically re-raising
+    the LR could substitute for the mini-batch sampling noise that
+    full_batch_training removes, helping escape a degenerate
+    near-constant sigma2_t local optimum. Two things changed that:
+    (1) validation runs found no consistent collapse benefit from the
+    restarts; (2) each LR spike measurably worsens val_loss right after
+    the restart, which -- combined with EarlyStopping's patience counting
+    consecutive non-improving epochs -- kept resetting that counter and
+    let many random-search trials run close to the full epoch budget
+    instead of stopping early, making the restart schedule the likely
+    cause of some series' (e.g. GOLD's) search phase taking far longer
+    than others' with no offsetting benefit. A single monotonic decay to
+    a floor lets val_loss settle predictably so patience can actually
+    trigger. The short linear warm-up is kept, avoiding a large,
+    potentially destabilizing first step straight from a random init.
+    Step count is in optimizer iterations, which under full-batch
+    training equals epochs.
+
+    hp keys (all optional, sane defaults for a ~3000-epoch full-batch run):
+      learning_rate  : peak LR after warm-up (default 1e-3)
+      lr_warmup_steps : linear warm-up length in steps/epochs (default 20)
+      lr_decay_steps   : length of the cosine decay to the floor (default 1000)
+      lr_alpha           : floor LR as a fraction of peak_lr, held constant
+                           for any remaining steps past lr_decay_steps (default 0.05)
+    """
+    import tensorflow as tf
+
+    peak_lr      = float(hp.get("learning_rate", 1e-3))
+    warmup_steps = float(max(int(hp.get("lr_warmup_steps", 20)), 1))
+    decay_steps  = int(hp.get("lr_decay_steps", 1000))
+    alpha        = float(hp.get("lr_alpha", 0.05))
+
+    decay = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=peak_lr, decay_steps=decay_steps, alpha=alpha,
+    )
+
+    class _WarmupCosineDecay(tf.keras.optimizers.schedules.LearningRateSchedule):
+        def __call__(self, step):
+            step = tf.cast(step, tf.float32)
+            warmup_lr = peak_lr * tf.clip_by_value(step / warmup_steps, 0.0, 1.0)
+            post_warmup_lr = decay(step - warmup_steps)
+            return tf.where(step < warmup_steps, warmup_lr, post_warmup_lr)
+
+        def get_config(self):
+            return {
+                "peak_lr": peak_lr, "warmup_steps": warmup_steps,
+                "decay_steps": decay_steps, "alpha": alpha,
+            }
+
+    return _WarmupCosineDecay()
+
+
 def _make_learned_nu_model(base_model, rho_init: float, lam: float,
-                            s_sse: float = 1.0, s_t: float = 1.0, name: str = "LSTM-SSE-t-Student"):
+                            s_sse: float = 1.0, s_t: float = 1.0, name: str = "LSTM-SSE-t-Student",
+                            grad_noise: bool = False, grad_noise_eta: float = 0.3,
+                            grad_noise_gamma: float = 0.55,
+                            lam_anneal: bool = False, lam_start: float = 0.1,
+                            lam_end: float | None = None, lam_anneal_steps: int = 1000,
+                            use_qlike: bool = False, s_qlike: float = 1.0):
     """
     Section 8: wraps a base model (predicting sigma2_t directly, via the
     base model's own activation="exponential" output layer) with a
@@ -102,12 +165,54 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
     model.predict(...) call site (sigma2_from_direct_output conversion,
     etc.) working exactly as it does for the fixed-ν path.
 
+    grad_noise (2026-08-01, feasibility check): opt-in additive gradient
+    noise (Neelakantan et al. 2015, "Adding Gradient Noise Improves
+    Learning for Very Deep Networks") -- N(0, sigma_t^2) added to every
+    trainable-variable gradient each step, with sigma_t = grad_noise_eta
+    / (1+t)^grad_noise_gamma decaying over optimizer steps t
+    (self.optimizer.iterations). Motivation: under full_batch_training
+    (one deterministic gradient step per epoch), there is no mini-batch
+    sampling noise to help escape a flat, near-constant-sigma2_t local
+    optimum -- this restores an analogous source of stochasticity
+    directly on the gradients themselves, unlike the adaptive_lr
+    warm-up+cosine-decay schedule (which perturbs the step size, not the
+    gradient direction, and per its own docstring was found to give no
+    consistent collapse benefit).
+
+    lam_anneal (2026-08-01, feasibility check): opt-in lambda annealing --
+    instead of a fixed λ for the whole run, linearly ramp λ from
+    lam_start to lam_end (default: the fixed `lam` argument) over
+    lam_anneal_steps optimizer steps, then hold at lam_end. Analogous to
+    KL-annealing / β-annealing in VAEs (Bowman et al. 2015), used there
+    to fight "posterior collapse" -- the same qualitative failure mode as
+    σ̂²_t collapsing to a near-constant value here: a loss term with a
+    cheap degenerate optimum (KL there, the Student-t NLL here) can win
+    before the rest of the network learns anything useful, unless its
+    weight starts low and only ramps up once some real structure exists.
+    λ is still never a trainable weight (no gradient flows into it) --
+    only its *value*, read from a step-indexed schedule instead of a
+    constant, changes.
+
+    use_qlike (2026-08-01, feasibility check): if True, replaces the SSE
+    term with QLIKE (see hybrid_loss_components_sigma2_tf's docstring)
+    in the mixed loss, normalized by s_qlike instead of s_sse. Motivation:
+    an outlier-dominance check found 82-99% of L_sse's per-epoch value
+    came from the top 1% of observations across every series checked --
+    i.e. L_sse was providing almost no gradient signal about ordinary
+    day-to-day variation, just noise from a handful of extreme days.
+    QLIKE (Patton 2011) is the standard robust alternative for volatility
+    loss functions for exactly this reason.
+
     A local class (not module-level) matching this file's lazy-TF-import
     convention: tf.keras.Model must already be resolvable when the class
     body evaluates.
     """
     import tensorflow as tf
     from src.losses.hybrid_student_t import hybrid_loss_components_sigma2_tf
+
+    lam_start_val = float(np.clip(lam_start, 0.0, 1.0))
+    lam_end_val = float(np.clip(lam_end, 0.0, 1.0)) if lam_end is not None else float(np.clip(lam, 0.0, 1.0))
+    lam_anneal_steps_val = float(max(int(lam_anneal_steps), 1))
 
     class _LearnedNuModel(tf.keras.Model):
         def __init__(self, **kwargs):
@@ -120,6 +225,15 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             self.lam_val = float(np.clip(lam, 0.0, 1.0))
             self.s_sse_val = float(s_sse)
             self.s_t_val = float(s_t)
+            self.grad_noise = bool(grad_noise)
+            self.grad_noise_eta = float(grad_noise_eta)
+            self.grad_noise_gamma = float(grad_noise_gamma)
+            self.lam_anneal = bool(lam_anneal)
+            self.lam_start_val = lam_start_val
+            self.lam_end_val = lam_end_val
+            self.lam_anneal_steps_val = lam_anneal_steps_val
+            self.use_qlike = bool(use_qlike)
+            self.s_qlike_val = float(s_qlike)
             # Keras 3's base Model.compile() creates its own internal
             # loss Mean tracker (present in self.metrics) regardless of
             # whether compile(loss=...) is passed. Our train_step/
@@ -146,9 +260,18 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
         def nu(self):
             return 2.0 + tf.nn.softplus(self.rho)
 
+        def _current_lam(self):
+            step = tf.cast(self.optimizer.iterations, tf.float32)
+            frac = tf.clip_by_value(step / self.lam_anneal_steps_val, 0.0, 1.0)
+            return self.lam_start_val + (self.lam_end_val - self.lam_start_val) * frac
+
         def _compute_loss(self, y_true, y_pred):
-            L_sse, L_t = hybrid_loss_components_sigma2_tf(y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val)
-            return (1.0 - self.lam_val) * L_sse + self.lam_val * L_t
+            lam = self._current_lam() if self.lam_anneal else self.lam_val
+            L_first, L_t = hybrid_loss_components_sigma2_tf(
+                y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val,
+                use_qlike=self.use_qlike, s_qlike=self.s_qlike_val,
+            )
+            return (1.0 - lam) * L_first + lam * L_t
 
         def train_step(self, data):
             x, y = data
@@ -157,6 +280,13 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
                 loss = self._compute_loss(y, y_pred)
             trainable_vars = self.trainable_variables
             grads = tape.gradient(loss, trainable_vars)
+            if self.grad_noise:
+                step = tf.cast(self.optimizer.iterations, tf.float32)
+                noise_std = self.grad_noise_eta / tf.pow(1.0 + step, self.grad_noise_gamma)
+                grads = [
+                    g + tf.random.normal(tf.shape(g), stddev=noise_std) if g is not None else g
+                    for g in grads
+                ]
             self.optimizer.apply_gradients(zip(grads, trainable_vars))
             self.loss_tracker.update_state(loss)
             return {"loss": self.loss_tracker.result()}
@@ -188,19 +318,43 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
     architecture CAN reproduce it -- that check is a structural-capacity
     diagnostic, not part of how this model is actually fit.
 
-    Output layer: Dense(1, activation="exponential") -- σ̂²_t > 0 is
-    guaranteed by the architecture itself (exp of a linear pre-activation)
-    rather than by a downstream log-variance transform. This is the one
-    exception to Section 3's u_t=log(σ̂²_t)-no-activation convention used
-    by every other model in this file; this model's raw predict() output
-    IS σ̂²_t directly (see src.losses.hybrid_student_t.
-    sigma2_from_direct_output and hybrid_loss_components_sigma2_tf).
+    Output layer: Dense(1, activation=None) emitting a pre-activation
+    u_t, fed through a Lambda clipping u_t to [-20, 20] (Section 3's
+    shared _LOG_VAR_CLIP, imported from hybrid_student_t) before exp().
+    σ̂²_t > 0 is still guaranteed by construction (exp always positive),
+    but now with the same overflow/underflow guard every other
+    architecture's u_t=log(σ̂²_t) output already had -- this model was
+    previously the only one without it, since activation="exponential"
+    applies exp() straight to an unbounded pre-activation. That asymmetry
+    was diagnosed as the most direct structural explanation for the
+    sigma2 collapse observed on DJIA/SP500/GOLD/OIL (see
+    logs/degeneracy.log): an unclipped exp() lets gradient descent push
+    the pre-activation arbitrarily negative, saturating σ̂²_t at the
+    float32-underflow floor with a vanishing local gradient and no
+    numerical guard-rail to prevent it. This model's raw predict() output
+    IS still σ̂²_t directly (see src.losses.hybrid_student_t.
+    sigma2_from_direct_output and hybrid_loss_components_sigma2_tf) --
+    only what happens between the linear layer and that output changed.
 
     Extra hp keys: nu (degrees of freedom, used when hp["nu_mode"] is
     not "learned"), lam (λ mixing weight), s_sse / s_t (frozen
     normalization scales — see src.losses.hybrid_student_t.
     compute_loss_scales; default 1.0/1.0 reproduces the un-normalized
-    loss).
+    loss). adaptive_lr (bool, default False) swaps the constant
+    hp["learning_rate"] for the warm-up + plain-cosine-decay schedule in
+    _make_adaptive_lr_schedule (see its docstring); optional
+    lr_warmup_steps / lr_decay_steps / lr_alpha keys tune that schedule.
+    grad_noise (bool, default False; nu_mode="learned" only) adds decaying
+    additive gradient noise, see _make_learned_nu_model's docstring;
+    optional grad_noise_eta / grad_noise_gamma tune its schedule.
+    lam_anneal (bool, default False; nu_mode="learned" only) linearly
+    ramps λ from lam_start to lam_end over lam_anneal_steps optimizer
+    steps instead of holding hp["lam"] fixed for the whole run -- see
+    _make_learned_nu_model's docstring (KL-annealing analogy). lam_end
+    defaults to hp["lam"] if not given.
+    use_qlike (bool, default False; nu_mode="learned" only) replaces the
+    SSE term with QLIKE (Patton 2011), normalized by s_qlike instead of
+    s_sse -- see _make_learned_nu_model's docstring.
 
     hp["nu_mode"] (Section 8):
       "fixed" (default) — ν = hp["nu"], a constant (either sampled by
@@ -222,22 +376,30 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
       src.tuning.tune_and_train).
     """
     import tensorflow as tf
-    from src.losses.hybrid_student_t import make_hybrid_loss_sigma2
+    from src.losses.hybrid_student_t import make_hybrid_loss_sigma2, _LOG_VAR_CLIP
 
     units    = hp["lstm_units"]
     drop     = hp.get("dropout", 0.0)
-    lr       = hp.get("learning_rate", 1e-3)
     lam      = hp["lam"]
     W        = hp["window_size"]
     nu_mode  = hp.get("nu_mode", "fixed")
     s_sse = hp.get("s_sse", 1.0)
     s_t   = hp.get("s_t", 1.0)
 
+    lr_or_schedule = (
+        _make_adaptive_lr_schedule(hp) if hp.get("adaptive_lr", False)
+        else hp.get("learning_rate", 1e-3)
+    )
+
     inp = tf.keras.Input(shape=(W, 1), name="eps_window")
     x   = tf.keras.layers.LSTM(units, dropout=drop, recurrent_dropout=0.0,
                                 kernel_initializer="glorot_uniform")(inp)
     x   = tf.keras.layers.Dropout(drop)(x)
-    out = tf.keras.layers.Dense(1, activation="exponential", name="sigma2")(x)
+    u   = tf.keras.layers.Dense(1, activation=None, name="log_sigma2_pre")(x)
+    out = tf.keras.layers.Lambda(
+        lambda t: tf.exp(tf.clip_by_value(t, -_LOG_VAR_CLIP, _LOG_VAR_CLIP)),
+        name="sigma2",
+    )(u)
 
     base_model = tf.keras.Model(inp, out, name="LSTM-SSE-t-Student")
 
@@ -245,12 +407,21 @@ def build_lstm_t_student(hp: dict) -> "tf.keras.Model":
         model = _make_learned_nu_model(
             base_model, rho_init=hp["nu_rho_init"], lam=lam, s_sse=s_sse, s_t=s_t,
             name="LSTM-SSE-t-Student",
+            grad_noise=hp.get("grad_noise", False),
+            grad_noise_eta=hp.get("grad_noise_eta", 0.3),
+            grad_noise_gamma=hp.get("grad_noise_gamma", 0.55),
+            lam_anneal=hp.get("lam_anneal", False),
+            lam_start=hp.get("lam_start", 0.1),
+            lam_end=hp.get("lam_end"),
+            lam_anneal_steps=hp.get("lam_anneal_steps", 1000),
+            use_qlike=hp.get("use_qlike", False),
+            s_qlike=hp.get("s_qlike", 1.0),
         )
-        model.compile(optimizer=tf.keras.optimizers.Adam(lr))
+        model.compile(optimizer=tf.keras.optimizers.Adam(lr_or_schedule))
     else:
         model = base_model
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(lr),
+            optimizer=tf.keras.optimizers.Adam(lr_or_schedule),
             loss=make_hybrid_loss_sigma2(nu=hp["nu"], lam=lam, s_sse=s_sse, s_t=s_t),
         )
     return model

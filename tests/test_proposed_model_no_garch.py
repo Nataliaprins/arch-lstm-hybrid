@@ -20,10 +20,36 @@ def _hp(**overrides):
     return hp
 
 
-def test_output_layer_is_exponential_activation():
+def test_output_layer_clips_pre_activation_before_exp():
+    """
+    Collapse-fix (2026-07-31): sigma2 is produced by a Dense(linear)
+    pre-activation layer feeding a Lambda that clips u_t to [-20, 20]
+    (Section 3's shared _LOG_VAR_CLIP) before exp() -- the same
+    overflow/underflow guard every other architecture's u_t=log(sigma2)
+    output already had. This model was previously the only one using a
+    raw activation="exponential" Dense layer with no clip.
+    """
     model = build_lstm_t_student(_hp())
-    out_layer = model.layers[-1]
-    assert out_layer.activation.__name__ == "exponential"
+    pre_layer, out_layer = model.layers[-2], model.layers[-1]
+    assert pre_layer.activation.__name__ == "linear"
+    assert out_layer.name == "sigma2"
+
+
+def test_output_is_clipped_against_overflow():
+    """
+    A pathologically large pre-activation must not overflow to inf --
+    the previously-missing clip was diagnosed as the most direct
+    structural explanation for the sigma2 collapse observed on
+    DJIA/SP500/GOLD/OIL (see logs/degeneracy.log).
+    """
+    model = build_lstm_t_student(_hp(lstm_units=4))
+    pre_layer = model.layers[-2]
+    kernel, bias = pre_layer.get_weights()
+    pre_layer.set_weights([np.full_like(kernel, 1000.0), np.array([1000.0], dtype="float32")])
+    X = np.ones((1, 6, 1), dtype="float32")
+    pred = model.predict(X, verbose=0)
+    assert np.all(np.isfinite(pred))
+    assert pred[0, 0] == pytest.approx(np.exp(20.0), rel=1e-3)  # pinned at the clip ceiling, not inf
 
 
 def test_predict_output_is_always_positive():

@@ -53,7 +53,7 @@ returns_scale: 100   # escalar 100×log-ret → puntos porcentuales
 # override por mercado ni por modelo (ver _get_window_size en tune_and_train.py,
 # que aborta la ejecución si detecta uno).
 data:
-  window: 22   # ≈ 1 mes bursátil
+  window: 5   # ~semana bursátil (2026-08-01, prueba pendiente de correr -- ver model: abajo)
   input_scaling: unconditional   # unconditional: eps2_t/sigma2_train | log1p: log1p(eps2_t)
 
 # ── Espacio de búsqueda de hiperparámetros (compartido por todos los modelos DL) ──
@@ -67,7 +67,7 @@ hyperparameter_search:
   patience:      20    # early-stopping
   n_trials:      50    # ensayos Keras Tuner
   cv_splits:     5     # TimeSeriesSplit k-folds
-  full_batch_max_epochs: 3000   # solo si model.full_batch_training=true (solo lstm_t_student)
+  full_batch_max_epochs: 5000   # solo si model.full_batch_training=true (solo lstm_t_student)
   full_batch_patience:   300    # early-stopping cuenta gradientes, no minibatches -> paciencia mayor
 
 # ── Análisis de sensibilidad de λ (exigido por Jurado 1) ──
@@ -112,6 +112,26 @@ model:
                      # En ambos casos ν queda fuera del espacio de búsqueda del tuner.
   full_batch_training: true   # batch_size=n_train (solo lstm_t_student, ver hyperparameter_search.full_batch_*)
                                # validado en BTC-USD/ETH-USD: no degenera, backtests VaR/ES limpios (2026-07-30)
+  adaptive_lr: true   # warm-up + cosine decay (monótono, sin restarts) en la LR de Adam (solo
+                       # lstm_t_student, ver neural._make_adaptive_lr_schedule). Revisado 2026-08-01:
+                       # la versión con restarts (SGDR) no mostró beneficio consistente contra el
+                       # colapso y, al subir la LR periódicamente, reseteaba el contador de paciencia
+                       # de EarlyStopping -- dejando trials correr cerca del tope de épocas sin
+                       # necesidad (causa probable de que la búsqueda de GOLD tardara mucho más que
+                       # el resto). El decay liso deja que val_loss se estabilice de forma predecible.
+  # ── Levers experimentales contra el colapso (2026-08-01, PENDIENTE DE CORRER) ──
+  # Probados por separado hoy en corridas baratas (3 semillas, best_hparams.json
+  # reusado): use_qlike ayudó a ETH-USD/DJIA/SP500 pero rompió OIL (mse_ratio
+  # 11.6x -- σ̂² sobre-reacciona sin calibrar magnitud); grad_noise y lam_anneal
+  # solos dieron resultados planos en DJIA. Combinados aquí + window=5 sin
+  # validar juntos todavía -- decidir/ajustar (p.ej. excluir OIL de use_qlike)
+  # antes de lanzar la búsqueda completa de producción.
+  grad_noise: true        # ruido de gradiente aditivo decreciente (Neelakantan et al. 2015)
+  lam_anneal: true         # rampa lineal de λ en vez de mantenerlo fijo (analogía KL-annealing/VAE)
+  lam_start: 0.1
+  lam_end: 0.9
+  lam_anneal_steps: 200
+  use_qlike: true          # reemplaza el término SSE por QLIKE (Patton 2011)
 
 # ── Reentrenar solo el modelo propuesto en las 6 series (batch completo) ──
 # Los otros 6 modelos econométricos ya tienen resultados válidos y no se

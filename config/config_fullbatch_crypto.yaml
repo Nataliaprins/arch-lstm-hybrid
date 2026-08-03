@@ -1,6 +1,6 @@
 data:
   input_scaling: unconditional
-  window: 22
+  window: 5
 dm_test:
   bandwidth: null
 hyperparameter_search:
@@ -14,7 +14,7 @@ hyperparameter_search:
   - 0.1
   - 0.2
   - 0.3
-  full_batch_max_epochs: 3000
+  full_batch_max_epochs: 5000
   full_batch_patience: 300
   lambda_values:
   - 0.1
@@ -52,8 +52,17 @@ mcs:
   level: 0.9
   n_bootstrap: 10000
 model:
+  adaptive_lr: true
   full_batch_training: true
   nu_mode: learned
+  # ── Levers experimentales contra el colapso (2026-08-01, PENDIENTE DE CORRER) ──
+  # ver config/config.yaml para el detalle de qué se probó hoy y por qué.
+  grad_noise: true
+  lam_anneal: true
+  lam_start: 0.1
+  lam_end: 0.9
+  lam_anneal_steps: 200
+  use_qlike: true
 n_seeds: 10
 paths:
   figures: outputs/figures

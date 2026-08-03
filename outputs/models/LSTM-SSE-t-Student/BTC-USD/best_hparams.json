@@ -1,12 +1,22 @@
 {
   "lstm_units": 16,
-  "dropout": 0.0,
+  "dropout": 0.3,
   "batch_size": 64,
-  "learning_rate": 0.0001,
-  "window_size": 22,
+  "learning_rate": 0.0005,
+  "window_size": 5,
   "nu_mode": "learned",
   "nu_rho_init": 2.9489308190572983,
-  "lam": 0.1,
+  "lam": 0.5,
   "s_sse": 2554.2740026092365,
-  "s_t": 1.8999043740431192
+  "s_t": 1.8999043740431192,
+  "s_qlike": 3.6227289137436602,
+  "adaptive_lr": true,
+  "grad_noise": true,
+  "grad_noise_eta": 0.3,
+  "grad_noise_gamma": 0.55,
+  "lam_anneal": true,
+  "lam_start": 0.1,
+  "lam_end": 0.9,
+  "lam_anneal_steps": 200,
+  "use_qlike": true
 }

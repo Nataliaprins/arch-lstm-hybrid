@@ -1,0 +1,94 @@
+data:
+  input_scaling: unconditional
+  window: 5
+dm_test:
+  bandwidth: null
+hyperparameter_search:
+  batch_size:
+  - 32
+  - 64
+  - 128
+  cv_splits: 5
+  dropout:
+  - 0.0
+  - 0.1
+  - 0.2
+  - 0.3
+  full_batch_max_epochs: 5000
+  full_batch_patience: 300
+  lambda_values:
+  - 0.1
+  - 0.3
+  - 0.5
+  - 0.7
+  - 0.9
+  lstm_units:
+  - 16
+  - 32
+  - 64
+  - 128
+  max_epochs: 1000
+  n_trials: 50
+  nu:
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  patience: 20
+lambda_sensitivity:
+- 0.0
+- 0.1
+- 0.3
+- 0.5
+- 0.7
+- 0.9
+- 1.0
+loss:
+  normalize: true
+mcs:
+  block_size: 20
+  level: 0.9
+  n_bootstrap: 10000
+model:
+  adaptive_lr: true
+  full_batch_training: true
+  nu_mode: learned
+  # ── Levers experimentales contra el colapso (2026-08-01, PENDIENTE DE CORRER) ──
+  # ver config/config.yaml para el detalle de qué se probó hoy y por qué.
+  grad_noise: true
+  lam_anneal: true
+  lam_start: 0.1
+  lam_end: 0.9
+  lam_anneal_steps: 200
+  use_qlike: true
+n_seeds: 10
+paths:
+  figures: outputs/figures
+  logs: logs
+  models: outputs/models
+  outputs: outputs
+  processed_data: data/processed
+  raw_data: data/raw
+  stamps: .stamps
+  tables: outputs/tables
+returns_scale: 100
+run_lambda_sensitivity: false
+seed: 42
+series:
+- end: '2026-07-01'
+  name: BTC-USD
+  start: '2013-04-28'
+  ticker: BTC-USD
+split:
+  train_frac: 0.8
+  val_frac: 0.1
+tost:
+  delta_pct: 0.02
+train_only_models:
+- lstm_t_student
+unconditional_var_tolerance: 0.2
+var_confidence_levels:
+- 0.99
+- 0.975

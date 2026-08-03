@@ -109,14 +109,28 @@ def make_hybrid_loss(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0
     return _loss
 
 
-def hybrid_loss_components_sigma2_tf(y_true, y_pred, nu, s_sse: float = 1.0, s_t: float = 1.0):
+def hybrid_loss_components_sigma2_tf(y_true, y_pred, nu, s_sse: float = 1.0, s_t: float = 1.0,
+                                      use_qlike: bool = False, s_qlike: float = 1.0):
     """
-    Same (L_sse_normalized, L_t_normalized) computation as
+    Same (L_first_normalized, L_t_normalized) computation as
     hybrid_loss_components_tf, but for a model whose output layer already
     guarantees sigma2_t > 0 directly (activation="exponential"), rather
     than emitting u_t = log sigma2_t for a downstream exp() transform.
     y_pred here IS sigma2_t; only floored (never exponentiated) for
     numerical safety against float32 underflow to exactly 0.
+
+    use_qlike (2026-08-01, feasibility check): if True, the first
+    returned component is QLIKE -- log(sigma2) + eps2/sigma2 (Patton
+    2011), the same training-relevant terms as src.eval.metrics.qlike
+    (the -log(eps2)-1 constants that don't depend on sigma2_t are
+    dropped, same convention every other term in this module already
+    follows) -- normalized by s_qlike instead of L_sse/s_sse. Patton
+    recommends QLIKE over MSE for volatility forecasting precisely
+    because it is robust to noise in the realized-variance proxy eps2_t;
+    MSE's squared residual on an already-squared, heavy-tailed proxy
+    amplifies that noise (an outlier-dominance check found 82-99% of
+    MSE's per-epoch value came from the top 1% of observations, across
+    every series checked).
     """
     import tensorflow as tf
 
@@ -125,14 +139,17 @@ def hybrid_loss_components_sigma2_tf(y_true, y_pred, nu, s_sse: float = 1.0, s_t
     nu_t = tf.cast(nu, tf.float32)
     nu_m2 = nu_t - 2.0
 
-    L_sse = tf.reduce_mean(tf.square(sigma2 - eps2)) / float(s_sse)
+    if use_qlike:
+        L_first = tf.reduce_mean(tf.math.log(sigma2) + eps2 / sigma2) / float(s_qlike)
+    else:
+        L_first = tf.reduce_mean(tf.square(sigma2 - eps2)) / float(s_sse)
 
     log_s2  = tf.math.log(sigma2)
     ratio   = eps2 / (sigma2 * nu_m2)
     log1p_r = tf.math.log1p(ratio)
     L_t     = tf.reduce_mean(0.5 * log_s2 + 0.5 * (nu_t + 1.0) * log1p_r) / float(s_t)
 
-    return L_sse, L_t
+    return L_first, L_t
 
 
 def make_hybrid_loss_sigma2(nu: float, lam: float, s_sse: float = 1.0, s_t: float = 1.0):
@@ -248,11 +265,17 @@ def compute_loss_scales(eps2_train: np.ndarray, nu_ref: float = 5.0) -> dict:
             evaluated at a fixed reference ν (`nu_ref`, default 5 — chosen
             once for scale purposes only, independent of whatever ν the
             model itself is trained or learns with).
+    s_qlike (2026-08-01, feasibility check): |mean per-observation QLIKE|
+            of the same constant-variance reference model -- for the
+            opt-in use_qlike loss variant (see
+            hybrid_loss_components_sigma2_tf), which is not part of the
+            official Section 2 respecification and is not used unless a
+            caller explicitly opts in via hp["use_qlike"].
 
     Returns
     -------
-    dict with s_sse, s_t, sigma2_const (the constant reference variance),
-    nu_ref, and their ratio s_sse/s_t.
+    dict with s_sse, s_t, s_qlike, sigma2_const (the constant reference
+    variance), nu_ref, and the ratio s_sse/s_t.
     """
     eps2_train = np.asarray(eps2_train, dtype=float)
     s_sse = float(np.var(eps2_train, ddof=1))
@@ -266,9 +289,13 @@ def compute_loss_scales(eps2_train: np.ndarray, nu_ref: float = 5.0) -> dict:
     ))
     s_t = abs(L_t_const)
 
+    L_qlike_const = float(np.mean(np.log(sigma2_const) + eps2_train / sigma2_const))
+    s_qlike = abs(L_qlike_const)
+
     return {
         "s_sse": s_sse,
         "s_t": s_t,
+        "s_qlike": s_qlike,
         "sigma2_const": sigma2_const,
         "nu_ref": nu_ref,
         "ratio_s_sse_over_s_t": s_sse / s_t if s_t > 0 else float("inf"),
