@@ -371,6 +371,36 @@ def student_t_ll_mean(
     return float(-np.mean(student_t_nll_per_obs(eps2, sigma2, nu)))
 
 
+def fit_nu_mle(eps2: np.ndarray, sigma2_hat: np.ndarray,
+               bounds: tuple[float, float] = (2.01, 60.0)) -> float:
+    """
+    Post-hoc ν: given an ALREADY-TRAINED, frozen σ̂²_t path (from any
+    model — including one trained under λ=0, where ν never receives a
+    training gradient at all, see hybrid_loss_components_sigma2_tf: L_t
+    and therefore ν only affects the loss when λ>0), find the ν that
+    maximizes the full Student-t log-likelihood (student_t_ll_total,
+    WITH the Gamma-function normalizing constant this time — unlike the
+    training-time L_t, this is a genuine 1-D MLE, not a gradient
+    contribution to a network, so the ν-dependent constant matters and
+    must be included) of the standardized residuals ε_t/σ̂_t.
+
+    Bounded scalar minimize (Brent's method within `bounds`) since the
+    Student-t NLL is well-behaved (unimodal in practice) over ν; no
+    gradient through σ̂²_t is involved, so this never touches the
+    network's weights. Use this to attach a genuine, series-specific ν
+    (for LL_t (OOS) tables, VaR/ES, tail metrics) to a point-forecast
+    model whose training objective did not itself involve ν — e.g. the
+    QLIKE+floor ARCH(1)-restricted arm (see src.eval.arch_restricted_recovery).
+    """
+    from scipy.optimize import minimize_scalar
+
+    result = minimize_scalar(
+        lambda nu: float(np.sum(student_t_nll_per_obs(eps2, sigma2_hat, nu))),
+        bounds=bounds, method="bounded",
+    )
+    return float(result.x)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Pure-NumPy training loss (for non-Keras usage / unit tests)
 # ══════════════════════════════════════════════════════════════════════════════

@@ -128,7 +128,7 @@ def _build_restricted_cell_class():
 
         def __init__(self, sigma2_train_scaler: float, forget_gate_trainable: bool = False,
                      beta_init: float = 0.85, alpha_init: float = 0.05, omega_init: float = 0.0,
-                     gate_saturation_bias: float = 30.0,
+                     gate_saturation_bias: float = 30.0, sigma2_floor: float | None = None,
                      name: str = "restricted_gate_lstm_cell", **kwargs):
             super().__init__(name=name, **kwargs)
             self.sigma2_train_scaler = float(sigma2_train_scaler)
@@ -137,6 +137,17 @@ def _build_restricted_cell_class():
             self._alpha_init = float(alpha_init)
             self._omega_init = float(omega_init)
             self._gate_bias = float(gate_saturation_bias)
+            # Opt-in, default None (unchanged h_T = omega_hat + alpha_hat*eps2
+            # exact-ARCH(1) behavior). When set, h_T = sigma2_floor +
+            # softplus(omega_hat + alpha_hat*eps2) instead: architecturally
+            # blocks the "shrink toward 0" escape route that NLL/QLIKE
+            # losses exploit (see conversation: both collapsed omega_hat
+            # toward ~0 under lam=1 / use_qlike). Softplus(z) -> z for
+            # large z, so away from the floor this is still close to the
+            # exact linear form -- but alpha_hat/omega_hat are then
+            # pre-softplus values, no longer directly comparable to
+            # arch's own (alpha, omega) in the same units.
+            self.sigma2_floor = None if sigma2_floor is None else float(sigma2_floor)
 
         def build(self, input_shape):
             self.alpha_hat = self.add_weight(
@@ -181,7 +192,11 @@ def _build_restricted_cell_class():
             c0 = tf.zeros_like(x_time_major[0])                     # (batch,) fresh per-window state
             c_seq = tf.scan(step, x_time_major, initializer=c0)      # (W, batch)
             c_T = c_seq[-1]                                          # (batch,)
-            h_T = o_t * c_T                                          # bullet 5: h_t ~= c_t
+            h_T_raw = o_t * c_T                                      # bullet 5: h_t ~= c_t
+            if self.sigma2_floor is None:
+                h_T = h_T_raw
+            else:
+                h_T = self.sigma2_floor + tf.nn.softplus(h_T_raw)
             return tf.expand_dims(h_T, axis=-1)                      # (batch, 1) — sigma2 output convention
 
         def get_config(self):
@@ -189,6 +204,7 @@ def _build_restricted_cell_class():
             config.update({
                 "sigma2_train_scaler": self.sigma2_train_scaler,
                 "forget_gate_trainable": self.forget_gate_trainable,
+                "sigma2_floor": self.sigma2_floor,
             })
             return config
 
@@ -247,6 +263,30 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
     learning_rate / adaptive_lr (+ lr_warmup_steps / lr_decay_steps /
     lr_alpha), grad_noise (+ eta / gamma), s_sse / s_t : identical
     semantics/defaults to build_lstm_t_student.
+    use_qlike / s_qlike     : bool (default False) / float (default 1.0),
+                              nu_mode="learned" only. Replaces the L_first
+                              term with QLIKE (Patton 2011) instead of
+                              SSE — see hybrid_loss_components_sigma2_tf's
+                              docstring. Only meaningful when lam < 1
+                              (L_first's weight is (1-lam)); wire this up
+                              for a lam-sweep that compares SSE- vs
+                              QLIKE-anchored fits, not for the lam=1.0
+                              recovery diagnostic itself, where L_first's
+                              weight is exactly 0 regardless.
+    sigma2_floor            : float, default None (unchanged exact-ARCH(1)
+                              behavior). When set, h_T = sigma2_floor +
+                              softplus(...) instead of the raw linear
+                              form — see _RestrictedGateLSTMCell's
+                              docstring. Breaks exact comparability of
+                              alpha_hat/omega_hat to arch's own MLE.
+    nu_max                  : float, default None (unchanged unbounded
+                              ν = 2 + softplus(ρ)), nu_mode="learned" only.
+                              When set, ν = 2 + (nu_max-2)·sigmoid(ρ) is
+                              bounded onto (2, nu_max) — see
+                              _make_learned_nu_model's docstring. Use to
+                              force the model to commit to heavier tails
+                              (lower ν ceiling) than it would otherwise
+                              settle on.
     """
     import tensorflow as tf
     from src.losses.hybrid_student_t import make_hybrid_loss_sigma2
@@ -262,6 +302,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
     beta_init = hp.get("beta_init", 0.85)
     alpha_init = hp.get("alpha_init", 0.05)
     omega_init = hp.get("omega_init", 0.0)
+    sigma2_floor = hp.get("sigma2_floor", None)
 
     lr_or_schedule = (
         _make_adaptive_lr_schedule(hp) if hp.get("adaptive_lr", False)
@@ -277,6 +318,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
         sigma2_train_scaler=sigma2_train_scaler,
         forget_gate_trainable=forget_gate_trainable,
         beta_init=beta_init, alpha_init=alpha_init, omega_init=omega_init,
+        sigma2_floor=sigma2_floor,
         name="restricted_cell",
     )(inp)
 
@@ -289,6 +331,9 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
             grad_noise=hp.get("grad_noise", False),
             grad_noise_eta=hp.get("grad_noise_eta", 0.3),
             grad_noise_gamma=hp.get("grad_noise_gamma", 0.55),
+            use_qlike=hp.get("use_qlike", False),
+            s_qlike=hp.get("s_qlike", 1.0),
+            nu_max=hp.get("nu_max", None),
         )
         model.compile(optimizer=tf.keras.optimizers.Adam(lr_or_schedule))
     else:

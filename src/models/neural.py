@@ -153,7 +153,8 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
                             grad_noise_gamma: float = 0.55,
                             lam_anneal: bool = False, lam_start: float = 0.1,
                             lam_end: float | None = None, lam_anneal_steps: int = 1000,
-                            use_qlike: bool = False, s_qlike: float = 1.0):
+                            use_qlike: bool = False, s_qlike: float = 1.0,
+                            nu_max: float | None = None):
     """
     Section 8: wraps a base model (predicting sigma2_t directly, via the
     base model's own activation="exponential" output layer) with a
@@ -203,6 +204,21 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
     QLIKE (Patton 2011) is the standard robust alternative for volatility
     loss functions for exactly this reason.
 
+    nu_max (2026-08-03, feasibility check): opt-in upper bound on the
+    learned ν. Default None reproduces the original unbounded
+    ν = 2 + softplus(ρ) (softplus has no ceiling, so nothing stops ν from
+    drifting arbitrarily high -- i.e. arbitrarily close to Gaussian,
+    which is the opposite of the heavy-tail hypothesis this whole
+    Student-t setup exists to test). When nu_max is set, the
+    reparameterization switches to ν = 2 + (nu_max - 2)·sigmoid(ρ), a
+    bounded map onto (2, nu_max) -- ρ=0 lands at the midpoint of that
+    range regardless of nu_max, matching this project's existing
+    "neutral, non-circular" ν=5 starting convention when nu_max=8 (see
+    src.eval.arch_restricted_recovery._neutral_nu_rho_init). This forces
+    the model to commit to a heavier tail than it would otherwise choose,
+    rather than adding a soft preference for one (a penalty term would
+    still let the optimizer trade it off against the rest of the loss).
+
     A local class (not module-level) matching this file's lazy-TF-import
     convention: tf.keras.Model must already be resolvable when the class
     body evaluates.
@@ -213,6 +229,7 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
     lam_start_val = float(np.clip(lam_start, 0.0, 1.0))
     lam_end_val = float(np.clip(lam_end, 0.0, 1.0)) if lam_end is not None else float(np.clip(lam, 0.0, 1.0))
     lam_anneal_steps_val = float(max(int(lam_anneal_steps), 1))
+    nu_max_val = None if nu_max is None else float(nu_max)
 
     class _LearnedNuModel(tf.keras.Model):
         def __init__(self, **kwargs):
@@ -234,6 +251,7 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             self.lam_anneal_steps_val = lam_anneal_steps_val
             self.use_qlike = bool(use_qlike)
             self.s_qlike_val = float(s_qlike)
+            self.nu_max_val = nu_max_val
             # Keras 3's base Model.compile() creates its own internal
             # loss Mean tracker (present in self.metrics) regardless of
             # whether compile(loss=...) is passed. Our train_step/
@@ -258,7 +276,9 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
             return self.base_model(inputs, training=training)
 
         def nu(self):
-            return 2.0 + tf.nn.softplus(self.rho)
+            if self.nu_max_val is None:
+                return 2.0 + tf.nn.softplus(self.rho)
+            return 2.0 + (self.nu_max_val - 2.0) * tf.sigmoid(self.rho)
 
         def _current_lam(self):
             step = tf.cast(self.optimizer.iterations, tf.float32)

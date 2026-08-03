@@ -78,7 +78,7 @@ _RECOVERY_TOLERANCE = 0.10   # relative error tolerance, same convention as
 
 
 def load_config(path: str) -> dict:
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
 
@@ -198,6 +198,7 @@ def train_restricted_multiseed(
         "nu_mode": "learned",
         "nu_rho_init": _neutral_nu_rho_init(),
         "learning_rate": 1e-3,
+        "batch_size": 64,   # only used when full_batch=False (_train_one)
         "adaptive_lr": bool(model_cfg.get("adaptive_lr", False)),
         "grad_noise": bool(model_cfg.get("grad_noise", False)),
     }

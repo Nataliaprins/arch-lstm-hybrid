@@ -133,6 +133,21 @@ model:
   lam_anneal_steps: 200
   use_qlike: true          # reemplaza el término SSE por QLIKE (Patton 2011)
 
+# ── Búsqueda de piso (sigma2_floor) por serie para el arm QLIKE+piso ──
+# (src.eval.qlike_floor_search) -- modelo elegido tras la exploración en
+# DJIA (2026-08-03): lam=0.0 (QLIKE puro) + piso arquitectónico en
+# sigma2_hat. floor_pct=1% ganó a 0.5% en DJIA; NO se asume que 1% sea
+# óptimo para las demás series (escalas/dinámicas de eps2 distintas) --
+# de ahí la búsqueda por grilla. nu_posthoc_bounds es un fit de MLE
+# posterior al entrenamiento (no un hiperparámetro de entrenamiento: a
+# lam=0 la verosimilitud t no participa de la pérdida, ver docstring de
+# qlike_floor_search.py) usado solo para métricas de riesgo/cola.
+# VALORES PROPUESTOS, PENDIENTES DE REVISIÓN -- no corrido aún.
+qlike_floor_search:
+  floor_pct_grid: [0.005, 0.01, 0.02, 0.05]
+  n_seeds: 3
+  nu_posthoc_bounds: [2.01, 60.0]
+
 # ── Reentrenar solo el modelo propuesto en las 6 series (batch completo) ──
 # Los otros 6 modelos econométricos ya tienen resultados válidos y no se
 # re-corren (MSGARCH nunca corrió -- R no está instalado en este entorno).
