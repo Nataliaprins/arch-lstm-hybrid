@@ -818,11 +818,23 @@ def run_series(series: str, cfg: dict, models_dir: Path, include_garch: bool) ->
     rows = []
 
     # ── ARCH(1)-restricted ──────────────────────────────────────────────
+    # batch_size=32/full_batch=False forced explicitly: without it,
+    # train_restricted_multiseed's own default reads
+    # cfg["model"]["full_batch_training"], which is True — a flag meant
+    # ONLY for lstm_t_student (see config.yaml's own comment on that key)
+    # but read here regardless of model. This session's own
+    # full-batch-vs-mini-batch check found full-batch converges to a MUCH
+    # worse optimum on this architecture (e.g. BTC-USD alpha_hat relative
+    # error 66% at 2000 full-batch epochs vs 16% at 1000 mini-batch
+    # epochs) — batch_size=32 is the winning candidate search_batch_size
+    # found for every one of the 6 series in the official run already on
+    # disk (outputs/models/ARCH-LSTM/<series>/best_hparams.json).
     arch1_ref = load_arch1_reference(series, models_dir)
     arch1_out_dir = models_dir / "ARCH-LSTM" / series
     arch1_result = train_restricted_multiseed(
         series, data, windows, cfg, arch1_out_dir,
         forget_gate_trainable=False, sigma2_train_scaler=sigma2_train_scaler,
+        batch_size=32, full_batch=False,
     )
     arch1_check = check_recovery(arch1_result, arch1_ref)
 
@@ -846,12 +858,19 @@ def run_series(series: str, cfg: dict, models_dir: Path, include_garch: bool) ->
     )
 
     # ── GARCH(1,1)-restricted (opt-in: "the natural extension") ────────
+    # batch_size=32/full_batch=False forced for the same reason as the
+    # ARCH(1) arm above (see its comment) -- this quick-tested combination
+    # (positivity + normalization + lgamma + bounded persistence/mix
+    # fixes, mini-batch) is what every quick test this session actually
+    # used; letting this default to cfg's full_batch_training=True would
+    # be untested on this architecture and known-worse on the ARCH(1) arm.
     if include_garch:
         garch_ref = load_garch11_reference(series, models_dir)
         garch_out_dir = models_dir / "GARCH11-Restricted-LSTM" / series
         garch_result = train_restricted_multiseed(
             series, data, windows, cfg, garch_out_dir,
             forget_gate_trainable=True, sigma2_train_scaler=sigma2_train_scaler,
+            batch_size=32, full_batch=False,
         )
         garch_check = check_recovery(garch_result, garch_ref)
 

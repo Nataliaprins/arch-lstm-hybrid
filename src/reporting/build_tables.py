@@ -260,6 +260,10 @@ ROSTER_DATA = [
     ("Panel C", "ARCH-LSTM", "DL (diagnostic)",
      "ARCH(1)-restricted LSTM cell (5 structural constraints)", "Keras/TF",
      "Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model)"),
+    ("Panel C", "GARCH11-Restricted-LSTM", "DL (diagnostic)",
+     "GARCH(1,1)-restricted LSTM cell (trainable forget gate, bounded "
+     "persistence/mix reparametrization)", "Keras/TF",
+     "Optimizer diagnostic (GARCH(1,1) recovery, not a proposed forecasting model)"),
 ]
 
 
@@ -282,7 +286,7 @@ PANEL_ORDER = {
                 "FIGARCH(1,d,1)", "MSGARCH(1,1)", "HAR"],
     "Panel B": ["SVR-GARCH", "NN-GARCH", "LSTM-SSE", "CNN-LSTM",
                 "LSTM-Attention", "TCN", "Transformer"],
-    "Panel C": ["LSTM-SSE-t-Student", "ARCH-LSTM"],
+    "Panel C": ["LSTM-SSE-t-Student", "ARCH-LSTM", "GARCH11-Restricted-LSTM"],
     # Section 9.2: minimum-bar reference forecast every other model must beat.
     "Panel D": ["Constant (unconditional variance)"],
 }
@@ -1205,14 +1209,26 @@ def build_table_c2_lambda_nu_sensitivity(tables_dir: Path, models_dir: Path) -> 
 def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], out_dir: Path) -> None:
     """
     Table C3: side-by-side comparison of ARCH(1) (traditional, arch's own
-    MLE), GARCH(1,1) (traditional, the project's canonical benchmark), and
+    MLE), GARCH(1,1) (traditional, the project's canonical benchmark),
     ARCH-LSTM (the ARCH(1)-restricted architecture's OOS predictions, mean
-    over seeds) -- one row per series, each model's point-forecast metrics
-    and its 99% VaR/ES backtest outcome. Pulls directly from
-    raw_results.json (src.eval.run_all_metrics); requires all three models
-    to be present there for a given series (silently skips otherwise).
+    over seeds), and -- once trained -- GARCH11-Restricted-LSTM (the
+    GARCH(1,1)-restricted extension, same OOS convention) -- one row per
+    series, each model's point-forecast metrics and its 99% VaR/ES
+    backtest outcome. Pulls directly from raw_results.json
+    (src.eval.run_all_metrics); requires the 3 REQUIRED models to be
+    present for a given series (silently skips otherwise).
+    GARCH11-Restricted-LSTM is OPTIONAL: its column block is only added if
+    at least one series has it in raw_results.json (i.e. this table
+    upgrades itself to 4 models automatically once that model's official
+    run + eval pipeline have populated raw_results.json -- no code change
+    needed here when that happens).
     """
-    models = ["ARCH(1)", "GARCH(1,1)", "ARCH-LSTM"]
+    required_models = ["ARCH(1)", "GARCH(1,1)", "ARCH-LSTM"]
+    optional_models = ["GARCH11-Restricted-LSTM"]
+    models = required_models + [
+        m for m in optional_models
+        if any(m in all_results.get(s, {}) for s in series_list)
+    ]
     metric_cols = ["MSE", "MAE", "R2", "QLIKE"]
     var_level = "0.99"
     col_tuples = [(m, c) for m in models for c in metric_cols] + \
@@ -1224,20 +1240,20 @@ def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], 
     kept_series = []
     for series in series_list:
         s_res = all_results.get(series, {})
-        if not all(m in s_res for m in models):
-            missing = [m for m in models if m not in s_res]
+        if not all(m in s_res for m in required_models):
+            missing = [m for m in required_models if m not in s_res]
             log.warning("[%s] missing %s in raw_results.json — "
                         "skipping Table C3 row.", series, ", ".join(missing))
             continue
         kept_series.append(series)
         row = []
         for m in models:
-            metrics = s_res[m].get("metrics", {})
+            metrics = s_res.get(m, {}).get("metrics", {})
             for c in metric_cols:
                 v = metrics.get(c)
                 row.append(_fmt(v, 4) if c != "R2" else _fmt(v, 4))
         for m in models:
-            ve = s_res[m].get("var_es", {}).get(var_level, {})
+            ve = s_res.get(m, {}).get("var_es", {}).get(var_level, {})
             st = ve.get("student_t", {})
             es = ve.get("es_backtest", {})
             n_exc, T = st.get("n_exc"), st.get("T")
@@ -1253,10 +1269,17 @@ def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], 
         rows.append(row)
 
     if not rows:
-        log.warning("No series had all of ARCH(1), GARCH(1,1) and ARCH-LSTM — skipping Table C3.")
+        log.warning("No series had all of %s — skipping Table C3.", ", ".join(required_models))
         return
 
     df = pd.DataFrame(rows, index=kept_series, columns=cols)
+    garch11_note = (
+        " GARCH11-Restricted-LSTM: the GARCH(1,1)-restricted extension "
+        "(trainable forget gate, bounded persistence/mix reparametrization, "
+        "same S=10-seed OOS convention) -- see Table C1 for whether it "
+        "recovers GARCH(1,1)'s own (alpha, beta) parameters."
+        if "GARCH11-Restricted-LSTM" in models else ""
+    )
     note = (
         "ARCH(1) and GARCH(1,1): arch package's own Student-t MLE "
         "(traditional econometric estimators; GARCH(1,1) is this project's "
@@ -1264,7 +1287,8 @@ def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], 
         "(src.models.arch\\_restricted), mean OOS forecast over S=10 seeds "
         "at (lambda=1.0, nu learned) -- see Table C1 for whether it "
         "actually recovers ARCH(1)'s own parameters (it does not, in any "
-        "of the 6 series as of this run). QLIKE = T\\textsuperscript{-1}"
+        "of the 6 series as of this run)." + garch11_note +
+        " QLIKE = T\\textsuperscript{-1}"
         "Sigma[ln sigma\\textsuperscript{2}\\_t + eps\\textsuperscript{2}\\_t/"
         "sigma\\textsuperscript{2}\\_t]. VaR/ES: Student-t 99%% backtest "
         "(src.eval.var\\_es\\_backtest); KupiecPass/ChristPass = Yes when "

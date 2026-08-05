@@ -174,10 +174,16 @@ def _build_restricted_cell_class():
             self._gate_bias = float(gate_saturation_bias)
 
         def build(self, input_shape):
+            # trainable=False when forget_gate_trainable=True: alpha_hat is
+            # derived from persistence_raw/mix_raw in that branch (see
+            # below), so alpha_raw would otherwise sit in
+            # trainable_variables with no path to the loss -- harmless
+            # (Adam skips None-gradient vars) but prints a
+            # "Gradients do not exist" warning on every step.
             self.alpha_raw = self.add_weight(
                 name="alpha_raw", shape=(), dtype=tf.float32,
                 initializer=tf.keras.initializers.Constant(_inv_softplus(self._alpha_init)),
-                trainable=True,
+                trainable=(not self.forget_gate_trainable),
             )
             self.omega_raw = self.add_weight(
                 name="omega_raw", shape=(), dtype=tf.float32,
