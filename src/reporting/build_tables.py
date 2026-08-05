@@ -106,10 +106,18 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
     rendered as a single \\multicolumn spanning divider (e.g. "Panel A"),
     not as "Panel A & --- Panel A --- & -- & ..." repeated across every
     column (Section 9.6).
+
+    A MultiIndex (e.g. ["Series", "Rung"]) is exploded into one leading
+    "l" column per level -- str(idx) on a MultiIndex row is a Python
+    tuple, which would otherwise render literally as
+    "('BTC-USD', '0 -- GARCH...')" in the output.
     """
     panel_rows = panel_rows or set()
+    is_multi = isinstance(df.index, pd.MultiIndex)
+    idx_names = [str(n) for n in df.index.names] if is_multi else [df.index.name or ""]
+    n_idx   = len(idx_names)
     n_cols  = len(df.columns)
-    col_fmt = "l" + "r" * n_cols
+    col_fmt = "l" * n_idx + "r" * n_cols
     lines   = [
         "\\begin{table}[ht]",
         "\\centering",
@@ -119,15 +127,16 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
         "\\toprule",
     ]
     # Header
-    header  = " & " + " & ".join(str(c) for c in df.columns) + " \\\\"
+    header  = " & ".join(idx_names) + " & " + " & ".join(str(c) for c in df.columns) + " \\\\"
     lines.append(header)
     lines.append("\\midrule")
     # Rows
     for idx, row in df.iterrows():
+        idx_vals = list(idx) if is_multi else [idx]
         if idx in panel_rows:
-            lines.append(f"\\multicolumn{{{n_cols + 1}}}{{l}}{{\\textbf{{{idx}}}}} \\\\")
+            lines.append(f"\\multicolumn{{{n_idx + n_cols}}}{{l}}{{\\textbf{{{idx}}}}} \\\\")
             continue
-        cells = str(idx) + " & " + " & ".join(
+        cells = " & ".join(str(v) for v in idx_vals) + " & " + " & ".join(
             str(v) if v is not None else "—" for v in row
         ) + " \\\\"
         lines.append(cells)
@@ -149,6 +158,11 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
     Emit a three-line MDPI-style .docx table. Panel-divider rows (Section
     9.6) get their cells merged into one bold, spanning label instead of
     repeating the panel name across every column.
+
+    A MultiIndex (e.g. ["Series", "Rung"]) is exploded into one leading
+    column per level -- str(idx) on a MultiIndex row is a Python tuple,
+    which would otherwise render literally as
+    "('BTC-USD', '0 -- GARCH...')" in the first cell.
     """
     try:
         from docx import Document
@@ -159,22 +173,28 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
         return
 
     panel_rows = panel_rows or set()
+    is_multi = isinstance(df.index, pd.MultiIndex)
+    idx_names = [str(n) if n else "Model" for n in df.index.names] if is_multi else [df.index.name or "Model"]
+    n_idx = len(idx_names)
+
     doc   = Document()
     doc.add_heading(title, level=2)
 
-    n_cols = len(df.columns) + 1  # +1 for index
+    n_cols = len(df.columns) + n_idx
     table  = doc.add_table(rows=1 + len(df), cols=n_cols)
     table.style = "Table Grid"
 
     # Header row
     hdr = table.rows[0].cells
-    hdr[0].text = df.index.name or "Model"
+    for i, name in enumerate(idx_names):
+        hdr[i].text = name
     for j, col in enumerate(df.columns):
-        hdr[j + 1].text = str(col)
+        hdr[n_idx + j].text = str(col)
 
     # Data rows
     for i, (idx, row) in enumerate(df.iterrows()):
         cells = table.rows[i + 1].cells
+        idx_vals = list(idx) if is_multi else [idx]
         if idx in panel_rows:
             merged = cells[0].merge(cells[-1]) if n_cols > 1 else cells[0]
             merged.text = str(idx)
@@ -182,9 +202,10 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
                 for run in para.runs:
                     run.font.bold = True
             continue
-        cells[0].text = str(idx)
+        for k, v in enumerate(idx_vals):
+            cells[k].text = str(v)
         for j, v in enumerate(row):
-            cells[j + 1].text = str(v) if v is not None else "—"
+            cells[n_idx + j].text = str(v) if v is not None else "—"
 
     # Style: Times New Roman 10pt
     for row in table.rows:
@@ -236,6 +257,9 @@ ROSTER_DATA = [
     # Panel C — Proposed
     ("Panel C", "LSTM-SSE-t-Student", "DL (proposed)",
      "LSTM + (1−λ)·MSE + λ·NLL_t", "Keras/TF", "Proposed model"),
+    ("Panel C", "ARCH-LSTM", "DL (diagnostic)",
+     "ARCH(1)-restricted LSTM cell (5 structural constraints)", "Keras/TF",
+     "Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model)"),
 ]
 
 
@@ -258,7 +282,7 @@ PANEL_ORDER = {
                 "FIGARCH(1,d,1)", "MSGARCH(1,1)", "HAR"],
     "Panel B": ["SVR-GARCH", "NN-GARCH", "LSTM-SSE", "CNN-LSTM",
                 "LSTM-Attention", "TCN", "Transformer"],
-    "Panel C": ["LSTM-SSE-t-Student"],
+    "Panel C": ["LSTM-SSE-t-Student", "ARCH-LSTM"],
     # Section 9.2: minimum-bar reference forecast every other model must beat.
     "Panel D": ["Constant (unconditional variance)"],
 }
@@ -1104,6 +1128,216 @@ def build_table_b1(tables_dir: Path) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Table C2 — ARCH(1)-restricted LSTM (λ, ν) sensitivity sweep
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table_c2_lambda_nu_sensitivity(tables_dir: Path, models_dir: Path) -> None:
+    """
+    Table C2: per series x (lambda, nu_fixed) grid point, the recovered
+    (alpha_hat, omega_hat) vs arch's own ARCH(1)-t MLE reference, relative
+    recovery error, OOS QLIKE/LL_t, and the 10%-tolerance verdict.
+
+    Source: outputs/models/ARCH-LSTM/lambda_nu_sensitivity/
+    <series>_lambda_nu_sensitivity.json, one file per series that has been
+    run (src.eval.arch_restricted_recovery.run_lambda_nu_sensitivity_series
+    / --lambda-nu-sensitivity). nu is held FIXED (not learned) at each grid
+    point -- this sweep measures bias from misspecifying the assumed
+    tail-heaviness, not whether the optimizer converges to the right nu
+    (see that module's docstring). Silently includes whatever subset of
+    series/grid points have been run so far; does not require the full
+    config-specified grid to be complete.
+    """
+    pattern = "*_lambda_nu_sensitivity.json"
+    src_dir = models_dir / "ARCH-LSTM" / "lambda_nu_sensitivity"
+    raw_paths = sorted(src_dir.glob(pattern)) if src_dir.exists() else []
+    if not raw_paths:
+        log.warning("No %s files found under %s — skipping Table C2 "
+                     "(run src.eval.arch_restricted_recovery --lambda-nu-sensitivity first).",
+                     pattern, src_dir)
+        return
+
+    rows = []
+    for p in raw_paths:
+        for r in json.loads(p.read_text()):
+            rows.append({
+                "Series": r["series"],
+                "lambda": f"{r['lam']:.2f}",
+                "nu (fixed)": f"{r['nu_fixed']:g}",
+                "alpha_hat": _fmt(r["alpha_recovered"], 4),
+                "alpha_ref": _fmt(r["alpha_ref"], 4),
+                "Rel. err. alpha": f"{100 * r['rel_err_alpha']:.2f}\\%",
+                "omega_hat": _fmt(r["omega_recovered"], 4),
+                "omega_ref": _fmt(r["omega_ref"], 4),
+                "Rel. err. omega": f"{100 * r['rel_err_omega']:.2f}\\%",
+                "QLIKE (OOS)": _fmt(r["qlike_oos"], 4),
+                "LL_t (OOS)": _fmt(r["ll_t_oos"], 4),
+                "Verdict (10% tol.)": r["verdict"],
+            })
+
+    df = pd.DataFrame(rows).set_index(["Series", "lambda", "nu (fixed)"])
+
+    note = (
+        "lambda: hybrid-loss mixing weight ((1-lambda)*SSE + lambda*Student-t "
+        "NLL); only lambda=1.0 is apples-to-apples with arch's own MLE (see "
+        "src.models.arch\\_restricted's \\_LAM\\_PURE\\_MLE docstring) -- "
+        "lambda<1.0 rows measure how much recovery degrades away from that "
+        "anchor. nu (fixed): Student-t degrees of freedom imposed, NOT "
+        "learned (nu\\_mode=\"fixed\") -- tests bias from misspecifying "
+        "tail-heaviness, not optimizer convergence to the true nu (a "
+        "different question from the nu\\_mode=\"learned\" single-point "
+        "diagnostic in Table C1). alpha\\_ref/omega\\_ref: arch's own "
+        "ARCH(1)-t MLE for that series (never re-estimated here). Verdict: "
+        "PASS iff relative error on alpha (and beta, if the GARCH(1,1) "
+        "extension) is below the 10% tolerance used throughout this project. "
+        "QLIKE/LL\\_t evaluated OOS on the test split using the fixed nu of "
+        "that row (not a learned nu\\_hat, which does not exist in "
+        "nu\\_mode=\"fixed\")."
+    )
+    stem = tables_dir / "TableC2_arch_restricted_lambda_nu_sensitivity"
+    _save_all(df, stem, "Table C2. ARCH(1)-Restricted LSTM -- ($\\lambda$, $\\nu$) Sensitivity Sweep",
+              "tab:arch_restricted_lambda_nu_sensitivity", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Table C3 — ARCH(1) vs. ARCH-LSTM head-to-head (OOS metrics + VaR 99% backtest)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], out_dir: Path) -> None:
+    """
+    Table C3: side-by-side comparison of ARCH(1) (traditional, arch's own
+    MLE), GARCH(1,1) (traditional, the project's canonical benchmark), and
+    ARCH-LSTM (the ARCH(1)-restricted architecture's OOS predictions, mean
+    over seeds) -- one row per series, each model's point-forecast metrics
+    and its 99% VaR/ES backtest outcome. Pulls directly from
+    raw_results.json (src.eval.run_all_metrics); requires all three models
+    to be present there for a given series (silently skips otherwise).
+    """
+    models = ["ARCH(1)", "GARCH(1,1)", "ARCH-LSTM"]
+    metric_cols = ["MSE", "MAE", "R2", "QLIKE"]
+    var_level = "0.99"
+    col_tuples = [(m, c) for m in models for c in metric_cols] + \
+                 [(m, c) for m in models for c in
+                  ["VaR exc/T (99%)", "Kupiec p_uc", "KupiecPass", "Christ. p_cc", "ChristPass", "ES Z2 (99%)"]]
+    cols = pd.MultiIndex.from_tuples(col_tuples)
+
+    rows = []
+    kept_series = []
+    for series in series_list:
+        s_res = all_results.get(series, {})
+        if not all(m in s_res for m in models):
+            missing = [m for m in models if m not in s_res]
+            log.warning("[%s] missing %s in raw_results.json — "
+                        "skipping Table C3 row.", series, ", ".join(missing))
+            continue
+        kept_series.append(series)
+        row = []
+        for m in models:
+            metrics = s_res[m].get("metrics", {})
+            for c in metric_cols:
+                v = metrics.get(c)
+                row.append(_fmt(v, 4) if c != "R2" else _fmt(v, 4))
+        for m in models:
+            ve = s_res[m].get("var_es", {}).get(var_level, {})
+            st = ve.get("student_t", {})
+            es = ve.get("es_backtest", {})
+            n_exc, T = st.get("n_exc"), st.get("T")
+            exc_str = f"{n_exc}/{T}" if n_exc is not None and T is not None else "—"
+            row.extend([
+                exc_str,
+                _fmt(st.get("p_uc"), 4),
+                _fmt_bool_pass(st.get("p_uc")),
+                _fmt(st.get("p_cc"), 4),
+                _fmt_bool_pass_cc(st.get("p_cc")),
+                _fmt(es.get("Z2"), 4),
+            ])
+        rows.append(row)
+
+    if not rows:
+        log.warning("No series had all of ARCH(1), GARCH(1,1) and ARCH-LSTM — skipping Table C3.")
+        return
+
+    df = pd.DataFrame(rows, index=kept_series, columns=cols)
+    note = (
+        "ARCH(1) and GARCH(1,1): arch package's own Student-t MLE "
+        "(traditional econometric estimators; GARCH(1,1) is this project's "
+        "canonical benchmark). ARCH-LSTM: the ARCH(1)-restricted LSTM cell "
+        "(src.models.arch\\_restricted), mean OOS forecast over S=10 seeds "
+        "at (lambda=1.0, nu learned) -- see Table C1 for whether it "
+        "actually recovers ARCH(1)'s own parameters (it does not, in any "
+        "of the 6 series as of this run). QLIKE = T\\textsuperscript{-1}"
+        "Sigma[ln sigma\\textsuperscript{2}\\_t + eps\\textsuperscript{2}\\_t/"
+        "sigma\\textsuperscript{2}\\_t]. VaR/ES: Student-t 99%% backtest "
+        "(src.eval.var\\_es\\_backtest); KupiecPass/ChristPass = Yes when "
+        "p >= 0.05. ES Z2: Acerbi-Szekely (2014) statistic (src.eval."
+        "var\\_es\\_backtest); its own p-value is in the underlying JSON, "
+        "not shown here for space -- see Table 11/12 for the full backtest."
+    )
+    stem = out_dir / "TableC3_arch1_vs_archlstm"
+    _save_all(df, stem, "Table C3. ARCH(1) vs. GARCH(1,1) vs. ARCH-LSTM -- OOS Metrics and VaR(99%) Backtest",
+              "tab:arch1_vs_archlstm", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Table C4 — ARCH-LSTM forecast metrics by split (train / validation / test)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table_c4_archlstm_by_split(tables_dir: Path) -> None:
+    """
+    Table C4: ARCH-LSTM's own MSE/MAE/R2/QLIKE, reported separately for
+    the train, validation, and test/OOS windows -- unlike Table C1/C3,
+    which only ever show the test split. Source: outputs/tables/
+    archlstm_by_split_raw.json (src.eval.arch_restricted_recovery.
+    compute_archlstm_by_split --by-split), which re-predicts sigma2 from
+    each series' already-saved seed weights (no retraining).
+    """
+    src_path = tables_dir / "archlstm_by_split_raw.json"
+    if not src_path.exists():
+        log.warning("No %s found — skipping Table C4 "
+                     "(run `python -m src.eval.arch_restricted_recovery --by-split` first).",
+                     src_path)
+        return
+    by_series = json.loads(src_path.read_text())
+    if not by_series:
+        log.warning("Empty %s — skipping Table C4.", src_path)
+        return
+
+    splits = ["train", "validation", "test"]
+    metric_cols = ["MSE", "MAE", "R2", "QLIKE"]
+    col_tuples = [(s.capitalize(), c) for s in splits for c in metric_cols]
+    cols = pd.MultiIndex.from_tuples(col_tuples)
+
+    rows = []
+    kept_series = []
+    for series, split_data in by_series.items():
+        kept_series.append(series)
+        row = []
+        for split in splits:
+            m = split_data.get(split, {})
+            for c in metric_cols:
+                row.append(_fmt(m.get(c), 4))
+        rows.append(row)
+
+    df = pd.DataFrame(rows, index=kept_series, columns=cols)
+    note = (
+        "ARCH-LSTM (src.models.arch\\_restricted), mean OOS/in-sample "
+        "forecast over S=10 seeds, re-predicted from each seed's saved "
+        "weights (no retraining) on the train, validation, and test "
+        "windows separately -- Table C1/C3 report the test split only. "
+        "Train/validation MSE/MAE are in-sample-adjacent (the model saw "
+        "these observations during training via the val\\_loss early-"
+        "stopping criterion for validation, and directly for train), so "
+        "they are NOT forecast-accuracy claims in the same sense as the "
+        "test column -- included here purely to show the split-to-split "
+        "gap this restricted architecture exhibits. "
+        "QLIKE = T\\textsuperscript{-1}Sigma[ln sigma\\textsuperscript{2}\\_t "
+        "+ eps\\textsuperscript{2}\\_t/sigma\\textsuperscript{2}\\_t]."
+    )
+    stem = tables_dir / "TableC4_archlstm_by_split"
+    _save_all(df, stem, "Table C4. ARCH-LSTM -- Forecast Metrics by Split (Train / Validation / Test)",
+              "tab:archlstm_by_split", note)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1181,6 +1415,18 @@ def run(config_path: str) -> None:
     # ── Table B1: ablation ladder (Section 7 / Proposition 2) ────────────────
     log.info("Building Table B1 (ablation ladder) …")
     build_table_b1(tables_dir)
+
+    # ── Table C2: ARCH(1)-restricted LSTM (lambda, nu) sensitivity sweep ─────
+    log.info("Building Table C2 (ARCH-LSTM lambda/nu sensitivity) …")
+    build_table_c2_lambda_nu_sensitivity(tables_dir, models_dir)
+
+    # ── Table C3: ARCH(1) vs. ARCH-LSTM head-to-head (metrics + VaR) ─────────
+    log.info("Building Table C3 (ARCH(1) vs ARCH-LSTM) …")
+    build_table_c3_arch1_vs_archlstm(all_results, series_list, tables_dir)
+
+    # ── Table C4: ARCH-LSTM forecast metrics by split ─────────────────────────
+    log.info("Building Table C4 (ARCH-LSTM by split) …")
+    build_table_c4_archlstm_by_split(tables_dir)
 
     log.info("══ build_tables complete — outputs in %s ══", tables_dir)
 

@@ -148,6 +148,19 @@ qlike_floor_search:
   n_seeds: 3
   nu_posthoc_bounds: [2.01, 60.0]
 
+# ── Sensibilidad (λ, ν) del ARCH(1)-restricted LSTM (src.eval.arch_restricted_recovery
+# --lambda-nu-sensitivity) -- diagnóstico DISTINTO del de recuperación en un solo punto
+# (λ=1, ν aprendido): aquí λ se aleja de 1.0 (mezclando el término SSE, ver
+# _LAM_PURE_MLE) y ν se mantiene FIJO (nu_mode="fixed", nunca aprendido) en cada
+# valor de la grilla -- mide el sesgo de (alpha_hat, omega_hat) al asumir una
+# pesadez de colas equivocada, no si el optimizador la encuentra. n_seeds más bajo
+# que el n_seeds=10 por defecto porque son |lambda_grid|×|nu_grid| combinaciones
+# por serie.
+arch_restricted_lambda_nu_sensitivity:
+  lambda_grid: [0.0, 0.3, 0.5, 0.7, 0.9, 1.0]
+  nu_grid: [3, 5, 10, 30, 100]
+  n_seeds: 3
+
 # ── Reentrenar solo el modelo propuesto en las 6 series (batch completo) ──
 # Los otros 6 modelos econométricos ya tienen resultados válidos y no se
 # re-corren (MSGARCH nunca corrió -- R no está instalado en este entorno).

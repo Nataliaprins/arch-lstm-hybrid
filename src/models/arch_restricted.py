@@ -27,9 +27,11 @@ exactly:
 
 With all five in place the cell collapses to exactly
     h_t = ω̂ + α̂₁·ε²_{t-1},
-with W_c = α̂₁, b_c = ω̂ the only two free (trainable, UNCONSTRAINED —
-no sigmoid/logit reparameterization) scalars. Training this restricted
-network under pure Student-t maximum likelihood (λ=1, see
+with W_c = α̂₁ = softplus(alpha_raw), b_c = ω̂ = softplus(omega_raw) the
+only two free trainable scalars (alpha_raw/omega_raw, unconstrained; the
+softplus keeps α̂₁, ω̂ >= 0 by construction — positivity is then structural,
+not a downstream clip, see _RestrictedGateLSTMCell's docstring). Training
+this restricted network under pure Student-t maximum likelihood (λ=1, see
 `hp["lam"]` below) and comparing the recovered (ω̂, α̂₁, ν̂) against
 `arch`'s own ARCH(1)-t MLE (outputs/models/ARCH1/<series>/params.json)
 is a pure optimizer diagnostic: it says nothing about whether the
@@ -95,6 +97,14 @@ def _logit(p: float) -> float:
     return float(np.log(p / (1.0 - p)))
 
 
+def _inv_softplus(y: float) -> float:
+    """rho such that softplus(rho) = y (y clamped >= 1e-6 -- softplus(x) > 0 for every
+    finite x, so y=0 exactly has no finite preimage; this reproduces omega_init=0.0's
+    "near-zero, neutral" intent instead)."""
+    y = max(float(y), 1e-6)
+    return float(np.log(np.expm1(y)))
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # The restricted cell
 # ──────────────────────────────────────────────────────────────────────────────
@@ -115,8 +125,13 @@ def _build_restricted_cell_class():
 
         Trainable weights
         ------------------
-        alpha_hat, omega_hat : unconstrained scalars, directly comparable
-            to arch's own (alpha[1], omega) once trained.
+        alpha_hat = softplus(alpha_raw) >= 0, omega_hat = softplus(omega_raw)
+            >= 0 -- alpha_raw/omega_raw are the actual tf.Variables (any real
+            number); alpha_hat/omega_hat are read-only properties, still
+            directly comparable to arch's own (alpha[1], omega) since
+            softplus only restricts the codomain to (0, inf), it does not
+            rescale/reparametrize the recursion's units otherwise (see
+            "Positivity" below).
         beta_bias : only created (and trainable) if forget_gate_trainable
             — sigmoid(beta_bias) = beta_hat, the GARCH(1,1) extension.
 
@@ -124,11 +139,29 @@ def _build_restricted_cell_class():
         kernel and recurrent-kernel) is a fixed tf.constant, never a
         tf.Variable — "fixed" here means genuinely absent from
         trainable_variables, not merely initialized-then-never-updated.
+
+        Positivity (structural, not a downstream clip)
+        -------------------------------------------------
+        h_t = o_t*c_t is a sum of non-negative terms by induction: c_0 = 0;
+        alpha_hat, omega_hat >= 0 (softplus); x_t = eps2_t/sigma2_train >= 0
+        (a scaled square); i_t, o_t, f_t in (0, 1) (sigmoid) times a
+        non-negative c_{t-1} stays non-negative. So sigma2_t >= 0 for EVERY
+        input, no output-side clip/softplus needed (an earlier sigma2_floor
+        opt-in did h_T = floor + softplus(h_T_raw), wrapping the whole
+        linear combination -- that also guarantees positivity, but makes
+        d(sigma2_t)/d(eps2_{t-1}) = alpha_hat * softplus'(h_T_raw), a
+        state-dependent quantity, not the constant alpha_hat GARCH's own
+        alpha[1] is. Constraining alpha_hat/omega_hat individually instead
+        keeps the marginal sensitivity exactly alpha_hat, matching the
+        "alpha <-> d(sigma2_t)/d(eps2_{t-1})" reading this diagnostic
+        depends on). Only alpha_hat, omega_hat, and f_t/i_t (already
+        sigmoid-bounded, unchanged) needed a constraint; the induction goes
+        through without ever touching h_t directly.
         """
 
         def __init__(self, sigma2_train_scaler: float, forget_gate_trainable: bool = False,
                      beta_init: float = 0.85, alpha_init: float = 0.05, omega_init: float = 0.0,
-                     gate_saturation_bias: float = 30.0, sigma2_floor: float | None = None,
+                     gate_saturation_bias: float = 30.0,
                      name: str = "restricted_gate_lstm_cell", **kwargs):
             super().__init__(name=name, **kwargs)
             self.sigma2_train_scaler = float(sigma2_train_scaler)
@@ -137,27 +170,16 @@ def _build_restricted_cell_class():
             self._alpha_init = float(alpha_init)
             self._omega_init = float(omega_init)
             self._gate_bias = float(gate_saturation_bias)
-            # Opt-in, default None (unchanged h_T = omega_hat + alpha_hat*eps2
-            # exact-ARCH(1) behavior). When set, h_T = sigma2_floor +
-            # softplus(omega_hat + alpha_hat*eps2) instead: architecturally
-            # blocks the "shrink toward 0" escape route that NLL/QLIKE
-            # losses exploit (see conversation: both collapsed omega_hat
-            # toward ~0 under lam=1 / use_qlike). Softplus(z) -> z for
-            # large z, so away from the floor this is still close to the
-            # exact linear form -- but alpha_hat/omega_hat are then
-            # pre-softplus values, no longer directly comparable to
-            # arch's own (alpha, omega) in the same units.
-            self.sigma2_floor = None if sigma2_floor is None else float(sigma2_floor)
 
         def build(self, input_shape):
-            self.alpha_hat = self.add_weight(
-                name="alpha_hat", shape=(), dtype=tf.float32,
-                initializer=tf.keras.initializers.Constant(self._alpha_init),
+            self.alpha_raw = self.add_weight(
+                name="alpha_raw", shape=(), dtype=tf.float32,
+                initializer=tf.keras.initializers.Constant(_inv_softplus(self._alpha_init)),
                 trainable=True,
             )
-            self.omega_hat = self.add_weight(
-                name="omega_hat", shape=(), dtype=tf.float32,
-                initializer=tf.keras.initializers.Constant(self._omega_init),
+            self.omega_raw = self.add_weight(
+                name="omega_raw", shape=(), dtype=tf.float32,
+                initializer=tf.keras.initializers.Constant(_inv_softplus(self._omega_init)),
                 trainable=True,
             )
             if self.forget_gate_trainable:
@@ -173,6 +195,14 @@ def _build_restricted_cell_class():
             self._b_o = tf.constant(self._gate_bias, dtype=tf.float32)
             super().build(input_shape)
 
+        @property
+        def alpha_hat(self):
+            return tf.nn.softplus(self.alpha_raw)
+
+        @property
+        def omega_hat(self):
+            return tf.nn.softplus(self.omega_raw)
+
         def call(self, inputs):
             # inputs: (batch, W, 1), Section-4-scaled x_t = eps2_t / sigma2_train.
             x = tf.squeeze(tf.cast(inputs, tf.float32), axis=-1)   # (batch, W)
@@ -184,19 +214,16 @@ def _build_restricted_cell_class():
 
             def step(c_prev, x_t):
                 # Linear candidate, no recurrent connection (bullets 3+4).
-                # alpha_hat/omega_hat are already in arch's own units;
-                # sigma2_train_scaler undoes the Section-4 input scaling.
+                # alpha_hat/omega_hat (softplus-constrained >= 0) are already
+                # in arch's own units; sigma2_train_scaler undoes the
+                # Section-4 input scaling.
                 g_t = self.alpha_hat * self.sigma2_train_scaler * x_t + self.omega_hat
                 return f_t * c_prev + i_t * g_t
 
-            c0 = tf.zeros_like(x_time_major[0])                     # (batch,) fresh per-window state
-            c_seq = tf.scan(step, x_time_major, initializer=c0)      # (W, batch)
+            c0 = tf.zeros_like(x_time_major[0])                     # (batch,) fresh per-window state, >= 0
+            c_seq = tf.scan(step, x_time_major, initializer=c0)      # (W, batch), >= 0 by induction (see class docstring)
             c_T = c_seq[-1]                                          # (batch,)
-            h_T_raw = o_t * c_T                                      # bullet 5: h_t ~= c_t
-            if self.sigma2_floor is None:
-                h_T = h_T_raw
-            else:
-                h_T = self.sigma2_floor + tf.nn.softplus(h_T_raw)
+            h_T = o_t * c_T                                          # bullet 5: h_t ~= c_t; >= 0, no clip needed
             return tf.expand_dims(h_T, axis=-1)                      # (batch, 1) — sigma2 output convention
 
         def get_config(self):
@@ -204,7 +231,6 @@ def _build_restricted_cell_class():
             config.update({
                 "sigma2_train_scaler": self.sigma2_train_scaler,
                 "forget_gate_trainable": self.forget_gate_trainable,
-                "sigma2_floor": self.sigma2_floor,
             })
             return config
 
@@ -273,12 +299,6 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
                               QLIKE-anchored fits, not for the lam=1.0
                               recovery diagnostic itself, where L_first's
                               weight is exactly 0 regardless.
-    sigma2_floor            : float, default None (unchanged exact-ARCH(1)
-                              behavior). When set, h_T = sigma2_floor +
-                              softplus(...) instead of the raw linear
-                              form — see _RestrictedGateLSTMCell's
-                              docstring. Breaks exact comparability of
-                              alpha_hat/omega_hat to arch's own MLE.
     nu_max                  : float, default None (unchanged unbounded
                               ν = 2 + softplus(ρ)), nu_mode="learned" only.
                               When set, ν = 2 + (nu_max-2)·sigmoid(ρ) is
@@ -302,7 +322,6 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
     beta_init = hp.get("beta_init", 0.85)
     alpha_init = hp.get("alpha_init", 0.05)
     omega_init = hp.get("omega_init", 0.0)
-    sigma2_floor = hp.get("sigma2_floor", None)
 
     lr_or_schedule = (
         _make_adaptive_lr_schedule(hp) if hp.get("adaptive_lr", False)
@@ -311,14 +330,13 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
 
     RestrictedCell = _build_restricted_cell_class()
 
-    model_name = "GARCH11-Restricted-LSTM" if forget_gate_trainable else "ARCH1-Restricted-LSTM"
+    model_name = "GARCH11-Restricted-LSTM" if forget_gate_trainable else "ARCH-LSTM"
 
     inp = tf.keras.Input(shape=(W, 1), name="eps_window_scaled")
     out = RestrictedCell(
         sigma2_train_scaler=sigma2_train_scaler,
         forget_gate_trainable=forget_gate_trainable,
         beta_init=beta_init, alpha_init=alpha_init, omega_init=omega_init,
-        sigma2_floor=sigma2_floor,
         name="restricted_cell",
     )(inp)
 

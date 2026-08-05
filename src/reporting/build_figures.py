@@ -7,8 +7,14 @@ Figures produced
 2. trainval_curves_<series>_<model>.pdf — train/val loss curves (all seeds)
 3. gate_dynamics_<series>.pdf        — mean ± std of per-seed σ²_test over time
 4. var_backtest_<series>.pdf         — VaR hit sequences
-5. forecast_vs_observed_<series>.png — σ̂²_t (mean over seeds) vs ε²_t across
+5. forecast_vs_observed_<model_folder>_<series>.png — σ̂²_t (mean over
+                                       seeds) vs ε²_t across
                                        train / validation / test(OOS)
+6. forecast_arch1_vs_archlstm_<series>.png — σ̂²_t: ARCH(1) (arch's own MLE)
+                                       vs the ARCH(1)-restricted LSTM
+                                       ("ARCH-LSTM") at one (λ, ν) grid
+                                       point from the sensitivity sweep,
+                                       vs ε²_t, test/OOS only
 
 Usage:
     python -m src.reporting.build_figures --config config/config.yaml
@@ -263,6 +269,7 @@ def build_forecast_vs_observed(
     processed_dir: Path,
     fig_dir:       Path,
     model_folder:  str = "LSTM-SSE-t-Student",
+    model_builder: "Callable[[dict], object] | None" = None,
 ) -> None:
     """
     σ̂²_t (mean across seeds) vs the realized-variance proxy ε²_t, over the
@@ -274,6 +281,14 @@ def build_forecast_vs_observed(
     src.eval.gate_correspondence.compute_gate_statistics_one_seed) and
     averaged across seeds exactly like the OOS aggregation already does.
 
+    model_builder: the hp-dict -> tf.keras.Model factory matching
+    model_folder's saved weights (default None resolves to
+    src.models.neural.build_lstm_t_student, i.e. the original
+    LSTM-SSE-t-Student-only behavior). Pass
+    src.models.arch_restricted.build_arch_restricted_lstm for ARCH-LSTM --
+    a mismatched builder will fail to load_weights (different architecture,
+    different tensor shapes), not silently produce wrong numbers.
+
     Window/target alignment (see src.tuning.tune_and_train._make_windows
     and _run_model_series): y_train's dates are train dates[window:]  (the
     first `window` observations have no full lookback yet); y_val's and
@@ -284,8 +299,11 @@ def build_forecast_vs_observed(
     """
     import tensorflow as tf
     from src.tuning.tune_and_train import _load_series, _make_windows
-    from src.models.neural import build_lstm_t_student
     from src.losses.hybrid_student_t import sigma2_from_direct_output
+
+    if model_builder is None:
+        from src.models.neural import build_lstm_t_student
+        model_builder = build_lstm_t_student
 
     W = cfg["data"]["window"]
 
@@ -320,7 +338,7 @@ def build_forecast_vs_observed(
                 weights_path = seed_dir / "weights.weights.h5"
                 if not weights_path.exists():
                     continue
-                model = build_lstm_t_student(hp)
+                model = model_builder(hp)
                 if not model.built:
                     model(X_train[:1])
                 model.load_weights(str(weights_path))
@@ -374,7 +392,67 @@ def build_forecast_vs_observed(
         ax.set_title(f"{model_folder} — {series}: pronóstico vs. observado (train / validation / test-OOS)")
         ax.legend(fontsize=8, loc="upper left", ncol=2)
         fig.tight_layout()
-        _savefig(fig, fig_dir / f"forecast_vs_observed_{series}.png")
+        _savefig(fig, fig_dir / f"forecast_vs_observed_{model_folder}_{series}.png")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Figure 6 — ARCH(1) vs ARCH-LSTM forecast (sensitivity-sweep grid point)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_forecast_arch1_vs_archlstm(
+    series:        str,
+    models_dir:    Path,
+    processed_dir: Path,
+    fig_dir:       Path,
+    lam:           float = 1.0,
+    nu:            float = 5,
+) -> None:
+    """
+    sigma2_t (test/OOS only) for ARCH(1) (arch's own MLE, never
+    re-estimated here) vs the ARCH(1)-restricted LSTM ("ARCH-LSTM",
+    src.models.arch_restricted) at one (lambda, nu_fixed) grid point from
+    the (lambda, nu) sensitivity sweep
+    (src.eval.arch_restricted_recovery.run_lambda_nu_sensitivity_series),
+    against the realized-variance proxy eps2_t. Log-scale y-axis --
+    ARCH(1)'s omega floor and ARCH-LSTM's collapse toward near-zero (see
+    that sweep's Table C2) sit orders of magnitude apart, invisible on a
+    linear axis. lam=1.0/nu=5 default to the pure-MLE anchor point
+    (src.models.arch_restricted._LAM_PURE_MLE) at the project's
+    conventional neutral nu; pass a different grid point to compare a
+    different cell of the sweep instead.
+    """
+    arch1_path = models_dir / "ARCH1" / series / "sigma2_test.npy"
+    archlstm_path = (models_dir / "ARCH-LSTM" / "lambda_nu_sensitivity" / series /
+                      f"lam{lam:.2f}_nu{nu:g}" / "sigma2_test.npy")
+    if not arch1_path.exists() or not archlstm_path.exists():
+        log.warning(
+            "[%s] missing sigma2_test.npy for ARCH(1) (%s) or ARCH-LSTM lam=%.2f/nu=%g (%s); skipping.",
+            series, arch1_path, lam, nu, archlstm_path,
+        )
+        return
+
+    sigma2_arch1    = np.load(arch1_path)
+    sigma2_archlstm = np.load(archlstm_path)
+    eps2_df  = pd.read_csv(processed_dir / series / "test_eps2.csv", index_col=0, parse_dates=True)
+    dates    = eps2_df.index
+    observed = eps2_df.iloc[:, 0].to_numpy()
+
+    n = min(len(sigma2_arch1), len(sigma2_archlstm), len(observed))
+    dates, observed = dates[:n], observed[:n]
+    sigma2_arch1, sigma2_archlstm = sigma2_arch1[:n], sigma2_archlstm[:n]
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.plot(dates, observed, color="gray", linewidth=0.5, alpha=0.6, label="ε²_t (observado)")
+    ax.plot(dates, sigma2_arch1, color=COLORS[0], linewidth=1.1, label="σ̂²_t — ARCH(1) (MLE)")
+    ax.plot(dates, sigma2_archlstm, color=COLORS[1], linewidth=1.1,
+            label=f"σ̂²_t — ARCH-LSTM (λ={lam:.1f}, ν={nu:g} fijo)")
+
+    ax.set_yscale("log")
+    ax.set_ylabel("Varianza condicional (pp², escala log)")
+    ax.set_title(f"ARCH(1) vs. ARCH-LSTM — {series}: pronóstico vs. observado (test/OOS)")
+    ax.legend(fontsize=8, loc="upper left")
+    fig.tight_layout()
+    _savefig(fig, fig_dir / f"forecast_arch1_vs_archlstm_{series}.png")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -409,6 +487,15 @@ def run(config_path: str) -> None:
 
     log.info("Building forecast-vs-observed figures …")
     build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir)
+
+    log.info("Building forecast-vs-observed figures (ARCH-LSTM, by split) …")
+    from src.models.arch_restricted import build_arch_restricted_lstm
+    build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir,
+                                model_folder="ARCH-LSTM", model_builder=build_arch_restricted_lstm)
+
+    log.info("Building ARCH(1) vs ARCH-LSTM forecast figures …")
+    for series in series_list:
+        build_forecast_arch1_vs_archlstm(series, models_dir, processed_dir, figures_dir)
 
     log.info("══ build_figures complete — outputs in %s ══", figures_dir)
 

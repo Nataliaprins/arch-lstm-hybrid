@@ -287,10 +287,26 @@ def _make_learned_nu_model(base_model, rho_init: float, lam: float,
 
         def _compute_loss(self, y_true, y_pred):
             lam = self._current_lam() if self.lam_anneal else self.lam_val
+            nu_t = self.nu()
             L_first, L_t = hybrid_loss_components_sigma2_tf(
-                y_true, y_pred, self.nu(), self.s_sse_val, self.s_t_val,
+                y_true, y_pred, nu_t, self.s_sse_val, self.s_t_val,
                 use_qlike=self.use_qlike, s_qlike=self.s_qlike_val,
             )
+            # hybrid_loss_components_sigma2_tf unconditionally drops the
+            # Student-t normalizing constant c(nu) = -lgamma((nu+1)/2) +
+            # lgamma(nu/2) + 0.5*log(pi*(nu-2)) -- harmless when nu is a
+            # fixed float (c(nu) doesn't depend on any trainable weight,
+            # so omitting it never changes a gradient), but THIS class
+            # always has nu trainable (self.rho), and dc/dnu != 0 across
+            # the whole training range (e.g. 0.057 at nu=5, 0.017 at
+            # nu=8, verified via digamma) -- so minimizing the truncated
+            # L_t w.r.t. nu is NOT equivalent to maximizing the full
+            # likelihood; its gradient's fixed point differs from the
+            # true MLE nu. Add the constant back only here (the fixed-nu
+            # path never instantiates this class, so it's untouched).
+            const = (-tf.math.lgamma(0.5 * (nu_t + 1.0)) + tf.math.lgamma(0.5 * nu_t)
+                     + 0.5 * tf.math.log(np.pi * (nu_t - 2.0)))
+            L_t = L_t + const / self.s_t_val
             return (1.0 - lam) * L_first + lam * L_t
 
         def train_step(self, data):

@@ -105,6 +105,7 @@ NEURAL_FOLDERS = {
     "TCN":               "TCN",
     "Transformer":       "Transformer",
     "LSTM-SSE-t-Student": "LSTM-SSE-t-Student",
+    "ARCH-LSTM":         "ARCH-LSTM",
 }
 
 # Section 9.2: minimum-bar reference forecast, fixed at the training-split
