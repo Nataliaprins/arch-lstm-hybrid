@@ -60,6 +60,66 @@
       "cross_seed_mse_relstd": null,
       "degenerate": false
     },
+    "LSTM-SSE": {
+      "model": "LSTM-SSE",
+      "series": "BTC-USD",
+      "temporal_cv": 0.3962680875696279,
+      "mse_model": 206.14789316072873,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.6987415032240386,
+      "cross_seed_mse_relstd": 0.01097665387509857,
+      "degenerate": false
+    },
+    "NN-GARCH": {
+      "model": "NN-GARCH",
+      "series": "BTC-USD",
+      "temporal_cv": 0.24324920629782,
+      "mse_model": 211.7102683658955,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7175952608480567,
+      "cross_seed_mse_relstd": 0.04208811256728846,
+      "degenerate": false
+    },
+    "CNN-LSTM": {
+      "model": "CNN-LSTM",
+      "series": "BTC-USD",
+      "temporal_cv": 0.4132659742175455,
+      "mse_model": 201.13178009742583,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.6817393096606958,
+      "cross_seed_mse_relstd": 0.005308553863408348,
+      "degenerate": false
+    },
+    "LSTM-Attention": {
+      "model": "LSTM-Attention",
+      "series": "BTC-USD",
+      "temporal_cv": 0.34391688383955926,
+      "mse_model": 211.841748072737,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7180409133676788,
+      "cross_seed_mse_relstd": 0.01416912641112822,
+      "degenerate": false
+    },
+    "TCN": {
+      "model": "TCN",
+      "series": "BTC-USD",
+      "temporal_cv": 0.21958334780795824,
+      "mse_model": 214.19607665647524,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7260209468691707,
+      "cross_seed_mse_relstd": 0.01295010821359045,
+      "degenerate": false
+    },
+    "Transformer": {
+      "model": "Transformer",
+      "series": "BTC-USD",
+      "temporal_cv": 0.27813964214995274,
+      "mse_model": 206.36638987631744,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.6994821012537304,
+      "cross_seed_mse_relstd": 0.00967009026766791,
+      "degenerate": false
+    },
     "LSTM-SSE-t-Student": {
       "model": "LSTM-SSE-t-Student",
       "series": "BTC-USD",
@@ -67,7 +127,17 @@
       "mse_model": 215.77669648015646,
       "mse_constant": 295.027406,
       "mse_ratio": 0.7313784824456494,
-      "cross_seed_mse_relstd": 0.010480038619978423,
+      "cross_seed_mse_relstd": 0.010480038619978463,
+      "degenerate": false
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "BTC-USD",
+      "temporal_cv": 1.2960600068464758,
+      "mse_model": 209.86864542951864,
+      "mse_constant": 295.027406,
+      "mse_ratio": 0.7113530511450812,
+      "cross_seed_mse_relstd": 1.3023504081833741e-05,
       "degenerate": false
     }
   },
@@ -132,6 +202,66 @@
       "cross_seed_mse_relstd": null,
       "degenerate": false
     },
+    "LSTM-SSE": {
+      "model": "LSTM-SSE",
+      "series": "ETH-USD",
+      "temporal_cv": 0.18110016477824503,
+      "mse_model": 754.3922802939917,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.8846106320415825,
+      "cross_seed_mse_relstd": 0.0034643477081201983,
+      "degenerate": false
+    },
+    "NN-GARCH": {
+      "model": "NN-GARCH",
+      "series": "ETH-USD",
+      "temporal_cv": 0.2250652296690147,
+      "mse_model": 889.9049751757536,
+      "mse_constant": 852.795855,
+      "mse_ratio": 1.0435146582364119,
+      "cross_seed_mse_relstd": 0.014693174622977553,
+      "degenerate": true
+    },
+    "CNN-LSTM": {
+      "model": "CNN-LSTM",
+      "series": "ETH-USD",
+      "temporal_cv": 0.13147256819605355,
+      "mse_model": 761.6267945434595,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.893093921690625,
+      "cross_seed_mse_relstd": 0.003945224852778756,
+      "degenerate": false
+    },
+    "LSTM-Attention": {
+      "model": "LSTM-Attention",
+      "series": "ETH-USD",
+      "temporal_cv": 0.0887153753759421,
+      "mse_model": 770.3579298654321,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.9033321695324518,
+      "cross_seed_mse_relstd": 0.0024076931598876277,
+      "degenerate": false
+    },
+    "TCN": {
+      "model": "TCN",
+      "series": "ETH-USD",
+      "temporal_cv": 0.1856587945249532,
+      "mse_model": 765.8473443630079,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.8980429957214179,
+      "cross_seed_mse_relstd": 0.03057465438865897,
+      "degenerate": false
+    },
+    "Transformer": {
+      "model": "Transformer",
+      "series": "ETH-USD",
+      "temporal_cv": 0.2116698688347221,
+      "mse_model": 754.4010370782239,
+      "mse_constant": 852.795855,
+      "mse_ratio": 0.8846209003656847,
+      "cross_seed_mse_relstd": 0.004507095580178601,
+      "degenerate": false
+    },
     "LSTM-SSE-t-Student": {
       "model": "LSTM-SSE-t-Student",
       "series": "ETH-USD",
@@ -141,6 +271,16 @@
       "mse_ratio": 0.8759487710660884,
       "cross_seed_mse_relstd": 0.00551258841509135,
       "degenerate": false
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "ETH-USD",
+      "temporal_cv": 1.7964248683466904,
+      "mse_model": 1774.4667397499315,
+      "mse_constant": 852.795855,
+      "mse_ratio": 2.080763795164004,
+      "cross_seed_mse_relstd": 5.9019200261438026e-05,
+      "degenerate": true
     }
   },
   "DJIA": {
@@ -148,9 +288,9 @@
       "model": "ARCH(1)",
       "series": "DJIA",
       "temporal_cv": 0.5475796084550204,
-      "mse_model": 1.5267357505875383,
+      "mse_model": 1.526735750587538,
       "mse_constant": 1.51004,
-      "mse_ratio": 1.0110564955812682,
+      "mse_ratio": 1.011056495581268,
       "cross_seed_mse_relstd": null,
       "degenerate": true
     },
@@ -204,6 +344,66 @@
       "cross_seed_mse_relstd": null,
       "degenerate": false
     },
+    "LSTM-SSE": {
+      "model": "LSTM-SSE",
+      "series": "DJIA",
+      "temporal_cv": 0.30060028290460056,
+      "mse_model": 1.0513540274382258,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.6962425018133466,
+      "cross_seed_mse_relstd": 0.006975206359750264,
+      "degenerate": false
+    },
+    "NN-GARCH": {
+      "model": "NN-GARCH",
+      "series": "DJIA",
+      "temporal_cv": 0.11788148178324542,
+      "mse_model": 1.0376103636084888,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.6871409787876406,
+      "cross_seed_mse_relstd": 0.04033752121524975,
+      "degenerate": false
+    },
+    "CNN-LSTM": {
+      "model": "CNN-LSTM",
+      "series": "DJIA",
+      "temporal_cv": 0.3926155456873748,
+      "mse_model": 1.0754144095328997,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7121761076083413,
+      "cross_seed_mse_relstd": 0.018535732549586303,
+      "degenerate": false
+    },
+    "LSTM-Attention": {
+      "model": "LSTM-Attention",
+      "series": "DJIA",
+      "temporal_cv": 0.19276626746026568,
+      "mse_model": 1.1101036397173485,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.7351484991903184,
+      "cross_seed_mse_relstd": 0.07718619202397502,
+      "degenerate": false
+    },
+    "TCN": {
+      "model": "TCN",
+      "series": "DJIA",
+      "temporal_cv": 0.24119348648674113,
+      "mse_model": 1.0129974659125849,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.6708414783135446,
+      "cross_seed_mse_relstd": 0.08393771188699381,
+      "degenerate": false
+    },
+    "Transformer": {
+      "model": "Transformer",
+      "series": "DJIA",
+      "temporal_cv": 0.20030722685301686,
+      "mse_model": 1.0300951133051517,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.6821641236690099,
+      "cross_seed_mse_relstd": 0.019699855932348728,
+      "degenerate": false
+    },
     "LSTM-SSE-t-Student": {
       "model": "LSTM-SSE-t-Student",
       "series": "DJIA",
@@ -213,6 +413,16 @@
       "mse_ratio": 0.7964157526979927,
       "cross_seed_mse_relstd": 0.05329095287793484,
       "degenerate": true
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "DJIA",
+      "temporal_cv": 0.5057397387740568,
+      "mse_model": 1.209767842257426,
+      "mse_constant": 1.51004,
+      "mse_ratio": 0.8011495339576608,
+      "cross_seed_mse_relstd": 3.088994431011852e-05,
+      "degenerate": false
     }
   },
   "SP500": {
@@ -240,9 +450,9 @@
       "model": "EGARCH(1,1)",
       "series": "SP500",
       "temporal_cv": 0.49967020164447956,
-      "mse_model": 1.331804922845564,
+      "mse_model": 1.3318049228455637,
       "mse_constant": 1.785698,
-      "mse_ratio": 0.7458175586496507,
+      "mse_ratio": 0.7458175586496506,
       "cross_seed_mse_relstd": null,
       "degenerate": false
     },
@@ -270,10 +480,70 @@
       "model": "HAR",
       "series": "SP500",
       "temporal_cv": 0.540861611096849,
-      "mse_model": 1.4023787511450172,
+      "mse_model": 1.402378751145017,
       "mse_constant": 1.785698,
-      "mse_ratio": 0.7853392629352876,
+      "mse_ratio": 0.7853392629352874,
       "cross_seed_mse_relstd": null,
+      "degenerate": false
+    },
+    "LSTM-SSE": {
+      "model": "LSTM-SSE",
+      "series": "SP500",
+      "temporal_cv": 0.3916891661110972,
+      "mse_model": 1.2949891596657985,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7252005432418015,
+      "cross_seed_mse_relstd": 0.011535783469924609,
+      "degenerate": false
+    },
+    "NN-GARCH": {
+      "model": "NN-GARCH",
+      "series": "SP500",
+      "temporal_cv": 0.14663285845975127,
+      "mse_model": 1.2837801159134266,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7189234214931229,
+      "cross_seed_mse_relstd": 0.04989384754907092,
+      "degenerate": false
+    },
+    "CNN-LSTM": {
+      "model": "CNN-LSTM",
+      "series": "SP500",
+      "temporal_cv": 0.2870037257591027,
+      "mse_model": 1.2971385255848351,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7264041991338037,
+      "cross_seed_mse_relstd": 0.03419755451816439,
+      "degenerate": false
+    },
+    "LSTM-Attention": {
+      "model": "LSTM-Attention",
+      "series": "SP500",
+      "temporal_cv": 0.20984848003437567,
+      "mse_model": 1.3932676897465817,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7802370220197266,
+      "cross_seed_mse_relstd": 0.06688301852038685,
+      "degenerate": false
+    },
+    "TCN": {
+      "model": "TCN",
+      "series": "SP500",
+      "temporal_cv": 0.19676452183733925,
+      "mse_model": 1.326023169991133,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7425797475223318,
+      "cross_seed_mse_relstd": 0.10033207666671096,
+      "degenerate": false
+    },
+    "Transformer": {
+      "model": "Transformer",
+      "series": "SP500",
+      "temporal_cv": 0.25258321049183174,
+      "mse_model": 1.3420619356753067,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.7515615382194003,
+      "cross_seed_mse_relstd": 0.17037218757878222,
       "degenerate": false
     },
     "LSTM-SSE-t-Student": {
@@ -283,8 +553,18 @@
       "mse_model": 1.4268324876838219,
       "mse_constant": 1.785698,
       "mse_ratio": 0.7990334802882805,
-      "cross_seed_mse_relstd": 0.0017328268274027655,
+      "cross_seed_mse_relstd": 0.001732826827402776,
       "degenerate": true
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "SP500",
+      "temporal_cv": 0.5560333019306458,
+      "mse_model": 1.5482801642018287,
+      "mse_constant": 1.785698,
+      "mse_ratio": 0.8670447994015946,
+      "cross_seed_mse_relstd": 4.798188377384293e-05,
+      "degenerate": false
     }
   },
   "GOLD": {
@@ -342,9 +622,9 @@
       "model": "HAR",
       "series": "GOLD",
       "temporal_cv": 0.8837416042971796,
-      "mse_model": 96.98643161035017,
+      "mse_model": 96.98643161035018,
       "mse_constant": 101.332549,
-      "mse_ratio": 0.95711035168325,
+      "mse_ratio": 0.9571103516832502,
       "cross_seed_mse_relstd": null,
       "degenerate": false
     },
@@ -355,8 +635,18 @@
       "mse_model": 100.54696638569477,
       "mse_constant": 101.332549,
       "mse_ratio": 0.9922474799848839,
-      "cross_seed_mse_relstd": 0.012161865201931462,
+      "cross_seed_mse_relstd": 0.01216186520193147,
       "degenerate": false
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "GOLD",
+      "temporal_cv": 1.4143388461215176,
+      "mse_model": 102.56736137587257,
+      "mse_constant": 101.332549,
+      "mse_ratio": 1.0121857427653633,
+      "cross_seed_mse_relstd": 2.0985964939001906e-06,
+      "degenerate": true
     }
   },
   "OIL": {
@@ -429,6 +719,16 @@
       "mse_ratio": 0.9717775620146978,
       "cross_seed_mse_relstd": 0.0035748172262781075,
       "degenerate": false
+    },
+    "ARCH-LSTM": {
+      "model": "ARCH-LSTM",
+      "series": "OIL",
+      "temporal_cv": 1.9977018872025665,
+      "mse_model": 1078.7953380755907,
+      "mse_constant": 820.466878,
+      "mse_ratio": 1.3148554402406856,
+      "cross_seed_mse_relstd": 3.299050767981535e-05,
+      "degenerate": true
     }
   }
 }

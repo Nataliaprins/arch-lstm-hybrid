@@ -7,17 +7,25 @@
  & MSE & RMSE & MAE & R2 & QLIKE & LL_t_OOS & Delta_MSE & MCS_90 & DEGENERATE \\
 \midrule
 \multicolumn{10}{l}{\textbf{Panel A}} \\
-ARCH(1) & 2.00740 & 1.41683 & 1.01764 & -0.5981 & 0.67303 & -1.2020 & +51.30\% & Yes & DEGENERATE \\
+ARCH(1) & 2.00740 & 1.41683 & 1.01764 & -0.5981 & 0.67303 & -1.2020 & +51.30\% & No & DEGENERATE \\
 GARCH(1,1) & 1.32676 & 1.15185 & 0.70795 & -0.0562 & 0.58989 & -1.1537 & — & Yes & ok \\
 EGARCH(1,1) & 1.33180 & 1.15404 & 0.72673 & -0.0602 & 0.59146 & -1.1570 & +0.38\% & Yes & ok \\
-GJR-GARCH(1,1) & \textbf{1.27924} & \textbf{1.13104} & 0.69498 & \textbf{-0.0184} & \textbf{0.53541} & \textbf{-1.1381} & -3.58\% & Yes & ok \\
+GJR-GARCH(1,1) & \textbf{1.27924} & \textbf{1.13104} & 0.69498 & \textbf{-0.0184} & 0.53541 & \textbf{-1.1381} & -3.58\% & Yes & ok \\
 FIGARCH(1,d,1) & 1.30434 & 1.14208 & \textbf{0.68017} & -0.0384 & 0.57223 & -1.1548 & -1.69\% & Yes & ok \\
+MSGARCH(1,1) & 2.61587 & 1.61737 & 1.11212 & -1.0825 & 0.82481 & -1.2662 & +97.16\% & No & — \\
 HAR & 1.40238 & 1.18422 & 0.76469 & -0.1164 & 0.55637 & -1.1594 & +5.70\% & Yes & ok \\
 \multicolumn{10}{l}{\textbf{Panel B}} \\
+NN-GARCH & 1.28378 ± 0.06776 & 1.13304 & 0.69864 ± 0.11872 & -0.0220 & 0.57219 & -1.1751 & -3.24\% & Yes & ok \\
+LSTM-SSE & 1.29499 ± 0.01503 & 1.13798 & 0.71143 ± 0.01816 & -0.0309 & \textbf{0.52728} & -1.1545 & -2.39\% & Yes & ok \\
+CNN-LSTM & 1.29714 ± 0.04492 & 1.13892 & 0.76259 ± 0.04402 & -0.0326 & 0.53942 & -1.1549 & -2.23\% & Yes & ok \\
+LSTM-Attention & 1.39327 ± 0.09587 & 1.18037 & 0.86092 ± 0.09220 & -0.1092 & 0.59838 & -1.1750 & +5.01\% & Yes & ok \\
+TCN & 1.32602 ± 0.15224 & 1.15153 & 0.80779 ± 0.19006 & -0.0556 & 0.57019 & -1.1676 & -0.06\% & Yes & ok \\
+Transformer & 1.34206 ± 0.25675 & 1.15847 & 0.81310 ± 0.23335 & -0.0684 & 0.56775 & -1.1635 & +1.15\% & Yes & ok \\
 \multicolumn{10}{l}{\textbf{Panel C}} \\
 LSTM-SSE-t-Student & 1.42683 ± 0.00247 & 1.19450 & 0.91443 ± 0.00107 & -0.1359 & 0.63307 & -1.1886 & +7.54\% & Yes & DEGENERATE \\
+ARCH-LSTM & 1.54828 ± 0.00007 & 1.24430 & 0.83637 ± 0.00003 & -0.2326 & 0.60477 & -1.1796 & +16.70\% & Yes & ok \\
 \multicolumn{10}{l}{\textbf{Panel D}} \\
-Constant (unconditional variance) & 1.78570 & 1.33630 & 1.13381 & -0.4216 & 0.75874 & -1.2312 & +34.59\% & Yes & — \\
+Constant (unconditional variance) & 1.78570 & 1.33630 & 1.13381 & -0.4216 & 0.75874 & -1.2312 & +34.59\% & No & — \\
 \bottomrule
 \end{tabular}
 \\[3pt]\footnotesize\textit{Note:} OOS window: 279 observations. Returns in 100×log-ret (pp); proxy ε²_t = centred squared return. QLIKE = T⁻¹Σ[lnσ̂²_t + ε²_t/σ̂²_t]. LL_t(OOS): per-obs avg Student-t log-likelihood evaluated OOS (all models). Δ%%MSE relative to GARCH(1,1); negative = improvement. MCS 90%% based on block-bootstrap QLIKE (B=10 000, block=20). Panel B: mean ± s.d. over S=10 seeds. Panel D: fixed at the training-split unconditional variance -- the minimum bar every other model should beat. DEGENERATE (src.eval.degeneracy): temporal coefficient of variation of the OOS σ̂²_t path < 5%%, or MSE no better than Panel D's constant forecast. Standard errors Bollerslev–Wooldridge; *** p<0.01.

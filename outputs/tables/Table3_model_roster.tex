@@ -4,7 +4,7 @@
 \label{tab:roster}
 \begin{tabular}{lrrrrr}
 \toprule
- & Panel & Family & Specification & Package & Role \\
+Model & Panel & Family & Specification & Package & Role \\
 \midrule
 ARCH(1) & Panel A & Econometric & ARCH(1)-t & arch (Python) & Benchmark \\
 GARCH(1,1) & Panel A & Econometric & GARCH(1,1)-t & arch (Python) & Reference benchmark \\
@@ -21,6 +21,7 @@ LSTM-Attention & Panel B & DL & LSTM + Bahdanau attn & Keras/TF & DL baseline \\
 TCN & Panel B & DL & Dilated causal Conv & Keras/TF & DL baseline \\
 Transformer & Panel B & DL & Encoder-only transformer & Keras/TF & DL baseline \\
 LSTM-SSE-t-Student & Panel C & DL (proposed) & LSTM + (1−λ)·MSE + λ·NLL_t & Keras/TF & Proposed model \\
+ARCH-LSTM & Panel C & DL (diagnostic) & ARCH(1)-restricted LSTM cell (5 structural constraints) & Keras/TF & Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model) \\
 \bottomrule
 \end{tabular}
 \\[3pt]\footnotesize\textit{Note:} Returns scaled as 100×log-retornos (pp). All parametric models use Student-t innovations. Neural models: S=10 seeds, mean ± s.d. reported. ε²_t as volatility proxy for all evaluations.

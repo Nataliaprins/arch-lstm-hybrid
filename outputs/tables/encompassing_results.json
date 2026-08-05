@@ -31,9 +31,19 @@
       "verdict": "neither_significant"
     },
     "NN-GARCH_vs_GARCH(1,1)": {
-      "error": "missing_model",
-      "candidate_available": false,
-      "benchmark_available": true
+      "beta_benchmark": 0.070441,
+      "se_benchmark": 0.293276,
+      "t_benchmark": 0.2402,
+      "p_benchmark": 0.8102,
+      "beta_candidate": 3.648781,
+      "se_candidate": 2.673275,
+      "t_candidate": 1.3649,
+      "p_candidate": 0.1723,
+      "r2": 0.0565,
+      "n_obs": 431,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
     }
   },
   "ETH-USD": {
@@ -68,9 +78,19 @@
       "verdict": "neither_significant"
     },
     "NN-GARCH_vs_GARCH(1,1)": {
-      "error": "missing_model",
-      "candidate_available": false,
-      "benchmark_available": true
+      "beta_benchmark": 0.508827,
+      "se_benchmark": 0.2524,
+      "t_benchmark": 2.016,
+      "p_benchmark": 0.0438,
+      "beta_candidate": -3.183553,
+      "se_candidate": 5.12509,
+      "t_candidate": -0.6212,
+      "p_candidate": 0.5345,
+      "r2": 0.0184,
+      "n_obs": 316,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "benchmark_sufficient"
     }
   },
   "DJIA": {
@@ -105,9 +125,19 @@
       "verdict": "neither_significant"
     },
     "NN-GARCH_vs_GARCH(1,1)": {
-      "error": "missing_model",
-      "candidate_available": false,
-      "benchmark_available": true
+      "beta_benchmark": 0.159253,
+      "se_benchmark": 0.158324,
+      "t_benchmark": 1.0059,
+      "p_benchmark": 0.3145,
+      "beta_candidate": -1.458712,
+      "se_candidate": 1.204081,
+      "t_candidate": -1.2115,
+      "p_candidate": 0.2257,
+      "r2": 0.0121,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
     }
   },
   "SP500": {
@@ -142,9 +172,19 @@
       "verdict": "neither_significant"
     },
     "NN-GARCH_vs_GARCH(1,1)": {
-      "error": "missing_model",
-      "candidate_available": false,
-      "benchmark_available": true
+      "beta_benchmark": 0.254447,
+      "se_benchmark": 0.172844,
+      "t_benchmark": 1.4721,
+      "p_benchmark": 0.141,
+      "beta_candidate": -0.656101,
+      "se_candidate": 0.745386,
+      "t_candidate": -0.8802,
+      "p_candidate": 0.3787,
+      "r2": 0.0146,
+      "n_obs": 279,
+      "bandwidth": 5,
+      "alpha": 0.05,
+      "verdict": "neither_significant"
     }
   },
   "GOLD": {

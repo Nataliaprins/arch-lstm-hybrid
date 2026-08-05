@@ -161,6 +161,7 @@ def _build_restricted_cell_class():
 
         def __init__(self, sigma2_train_scaler: float, forget_gate_trainable: bool = False,
                      beta_init: float = 0.85, alpha_init: float = 0.05, omega_init: float = 0.0,
+                     persistence_max: float = 0.999,
                      gate_saturation_bias: float = 30.0,
                      name: str = "restricted_gate_lstm_cell", **kwargs):
             super().__init__(name=name, **kwargs)
@@ -169,6 +170,7 @@ def _build_restricted_cell_class():
             self._beta_init = float(beta_init)
             self._alpha_init = float(alpha_init)
             self._omega_init = float(omega_init)
+            self._persistence_max = float(persistence_max)
             self._gate_bias = float(gate_saturation_bias)
 
         def build(self, input_shape):
@@ -183,21 +185,50 @@ def _build_restricted_cell_class():
                 trainable=True,
             )
             if self.forget_gate_trainable:
-                self.beta_bias = self.add_weight(
-                    name="beta_bias", shape=(), dtype=tf.float32,
-                    initializer=tf.keras.initializers.Constant(_logit(self._beta_init)),
+                # Persistence/mix reparametrization (replaces independent
+                # alpha_hat/beta_hat for this branch only): alpha_hat and
+                # beta_hat share a single bounded "budget"
+                # persistence_hat = persistence_max*sigmoid(persistence_raw)
+                # in (0, persistence_max), split between them by
+                # mix_raw. This makes alpha_hat + beta_hat < persistence_max
+                # a STRUCTURAL guarantee (stationarity), not something the
+                # optimizer has to discover on its own -- the prior
+                # independent sigmoid(beta_bias)/softplus(alpha_raw)
+                # parametrization let both grow large simultaneously, and
+                # the GARCH(1,1)-restricted recovery diagnostic found
+                # alpha_hat+beta_hat > 1 (non-stationary) in all 6 series.
+                pers_init = min(self._alpha_init + self._beta_init, 0.995 * self._persistence_max)
+                mix_init = self._beta_init / pers_init if pers_init > 0 else 0.5
+                self.persistence_raw = self.add_weight(
+                    name="persistence_raw", shape=(), dtype=tf.float32,
+                    initializer=tf.keras.initializers.Constant(_logit(pers_init / self._persistence_max)),
                     trainable=True,
                 )
-            else:
-                self.beta_bias = tf.constant(-self._gate_bias, dtype=tf.float32)
+                self.mix_raw = self.add_weight(
+                    name="mix_raw", shape=(), dtype=tf.float32,
+                    initializer=tf.keras.initializers.Constant(_logit(mix_init)),
+                    trainable=True,
+                )
             # b_i, b_o: fixed constants, never trainable — bullets 2 and 5.
             self._b_i = tf.constant(self._gate_bias, dtype=tf.float32)
             self._b_o = tf.constant(self._gate_bias, dtype=tf.float32)
             super().build(input_shape)
 
         @property
+        def persistence_hat(self):
+            return self._persistence_max * tf.sigmoid(self.persistence_raw)
+
+        @property
         def alpha_hat(self):
-            return tf.nn.softplus(self.alpha_raw)
+            if self.forget_gate_trainable:
+                return self.persistence_hat * (1.0 - tf.sigmoid(self.mix_raw))
+            return tf.nn.softplus(self.alpha_raw)   # ARCH(1) unchanged
+
+        @property
+        def beta_hat(self):
+            if self.forget_gate_trainable:
+                return self.persistence_hat * tf.sigmoid(self.mix_raw)
+            return tf.constant(0.0, dtype=tf.float32)   # ARCH(1): forget gate fixed closed
 
         @property
         def omega_hat(self):
@@ -209,7 +240,7 @@ def _build_restricted_cell_class():
             x_time_major = tf.transpose(x)                          # (W, batch) — scan over time
 
             i_t = tf.sigmoid(self._b_i)         # ~= 1, no kernel/recurrent dependence
-            f_t = tf.sigmoid(self.beta_bias)     # ~= 0 for ARCH(1); trainable for GARCH(1,1)
+            f_t = self.beta_hat                  # ~= 0 for ARCH(1); trainable (persistence-bounded) for GARCH(1,1)
             o_t = tf.sigmoid(self._b_o)          # ~= 1
 
             def step(c_prev, x_t):
@@ -282,6 +313,17 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
                               convergence is genuine, not circular (same
                               principle as
                               src.models.ablation_ladder._NEUTRAL_*_INIT).
+    persistence_max          : float, default 0.999, forget_gate_trainable
+                              only. Hard upper bound on alpha_hat+beta_hat
+                              (persistence/mix reparametrization -- see
+                              _RestrictedGateLSTMCell.build) that makes
+                              stationarity a structural guarantee instead
+                              of something the optimizer has to discover;
+                              the prior independent alpha/beta
+                              parametrization let both grow large at once
+                              (all 6 series recovered alpha_hat+beta_hat
+                              > 1, non-stationary, in the pre-fix
+                              diagnostic).
     nu_mode                 : "fixed" (hp["nu"] constant) or "learned"
                               (nu = 2 + softplus(rho), hp["nu_rho_init"]
                               required) — identical semantics to
@@ -322,6 +364,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
     beta_init = hp.get("beta_init", 0.85)
     alpha_init = hp.get("alpha_init", 0.05)
     omega_init = hp.get("omega_init", 0.0)
+    persistence_max = hp.get("persistence_max", 0.999)
 
     lr_or_schedule = (
         _make_adaptive_lr_schedule(hp) if hp.get("adaptive_lr", False)
@@ -337,6 +380,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
         sigma2_train_scaler=sigma2_train_scaler,
         forget_gate_trainable=forget_gate_trainable,
         beta_init=beta_init, alpha_init=alpha_init, omega_init=omega_init,
+        persistence_max=persistence_max,
         name="restricted_cell",
     )(inp)
 
@@ -386,7 +430,7 @@ def extract_arch_params(model) -> dict:
 
     alpha_hat = float(cell.alpha_hat.numpy())
     omega_hat = float(cell.omega_hat.numpy())
-    beta_hat = float(tf.sigmoid(cell.beta_bias).numpy()) if cell.forget_gate_trainable else 0.0
+    beta_hat = float(cell.beta_hat.numpy())
     nu_hat = float(model.nu().numpy()) if hasattr(model, "nu") else None
 
     return {"alpha_hat": alpha_hat, "omega_hat": omega_hat, "beta_hat": beta_hat, "nu_hat": nu_hat}

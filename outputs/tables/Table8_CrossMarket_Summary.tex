@@ -7,13 +7,21 @@
  & ('BTC-USD', 'Δ%MSE') & ('BTC-USD', 'Δ%MAE') & ('ETH-USD', 'Δ%MSE') & ('ETH-USD', 'Δ%MAE') & ('DJIA', 'Δ%MSE') & ('DJIA', 'Δ%MAE') & ('SP500', 'Δ%MSE') & ('SP500', 'Δ%MAE') & ('GOLD', 'Δ%MSE') & ('GOLD', 'Δ%MAE') & ('OIL', 'Δ%MSE') & ('OIL', 'Δ%MAE') \\
 \midrule
 ARCH(1) & \textbf{+280.41} & \textbf{+282.21} & \textbf{+19.91} & \textbf{+36.96} & +38.55 & +28.33 & +51.30 & +43.75 & +4.66 & -11.20 & +14.80 & +4.44 \\
+ARCH-LSTM & -2.51 & +5.53 & +124.51 & +28.36 & +9.79 & +6.46 & +16.70 & +18.14 & +6.40 & -5.28 & +42.59 & +15.46 \\
+CNN-LSTM & \underline{-6.57} & \underline{-6.18} & -3.64 & -6.12 & -2.41 & -6.75 & -2.23 & +7.72 & — & — & — & — \\
 Constant (unconditional variance) & \textbf{+37.05} & \textbf{+87.58} & \textbf{+7.90} & \textbf{+21.79} & \textbf{+37.03} & \textbf{+50.71} & \textbf{+34.59} & \textbf{+60.15} & +5.12 & -11.47 & +8.44 & +7.06 \\
 EGARCH(1,1) & +13.20 & +33.23 & -0.57 & +0.37 & +0.22 & +1.67 & +0.38 & +2.65 & +0.18 & -4.35 & +0.42 & -3.83 \\
 FIGARCH(1,d,1) & \underline{-1.00} & \underline{-3.71} & -4.03 & -8.23 & -0.45 & -4.07 & -1.69 & -3.92 & -0.60 & -4.24 & +1.80 & +8.73 \\
 GARCH(1,1) & — & — & — & — & — & — & — & — & — & — & — & — \\
 GJR-GARCH(1,1) & \underline{+0.63} & \underline{-3.06} & -0.01 & -0.76 & -6.04 & -5.97 & -3.58 & -1.83 & -0.74 & -1.77 & +5.95 & +2.82 \\
-HAR & \textbf{+4.60} & \textbf{+36.31} & \textbf{-2.21} & \textbf{+5.54} & +2.84 & +5.40 & +5.70 & +8.01 & +0.61 & -1.06 & +2.01 & +2.89 \\
+HAR & \textbf{+4.60} & \textbf{+36.31} & -2.21 & +5.54 & +2.84 & +5.40 & +5.70 & +8.01 & +0.61 & -1.06 & +2.01 & +2.89 \\
+LSTM-Attention & -1.59 & +6.68 & -2.53 & -7.06 & \underline{+0.74} & \underline{+10.90} & +5.01 & +21.61 & — & — & — & — \\
+LSTM-SSE & \underline{-4.24} & \underline{-2.60} & -4.55 & -8.31 & -4.59 & -5.00 & -2.39 & +0.49 & — & — & — & — \\
 LSTM-SSE-t-Student & +0.24 & +10.67 & -5.49 & -5.19 & +9.14 & +24.29 & +7.54 & +29.17 & +4.30 & -11.38 & +5.38 & -11.98 \\
+MSGARCH(1,1) & \textbf{+157.81} & \textbf{+133.64} & \textbf{+42.11} & \textbf{+53.18} & +103.50 & +44.43 & +97.16 & +57.09 & — & — & — & — \\
+NN-GARCH & -1.65 & -23.46 & \textbf{+12.60} & \textbf{-29.44} & -5.84 & -8.33 & -3.24 & -1.31 & — & — & — & — \\
+TCN & -0.50 & -3.53 & -3.10 & -14.79 & \underline{-8.07} & \underline{-2.45} & -0.06 & +14.10 & — & — & — & — \\
+Transformer & \underline{-4.14} & \underline{+1.75} & -4.55 & -17.48 & \underline{-6.52} & \underline{-3.88} & +1.15 & +14.85 & — & — & — & — \\
 \bottomrule
 \end{tabular}
 \\[3pt]\footnotesize\textit{Note:} Percentage change relative to GARCH(1,1) (reference row shown as --). \textbf{Bold} = proposed model significantly beats this rival (positive DM stat, QLIKE, Holm-corrected p<0.05); \underline{underlined} = this rival significantly beats the proposed model (negative DM stat, same test) -- these are opposite conclusions and were previously conflated under a single bold marker. Unmarked = not statistically significant. Negative Delta_%% = improvement over GARCH(1,1).
