@@ -160,7 +160,7 @@ def _build_restricted_cell_class():
         """
 
         def __init__(self, sigma2_train_scaler: float, forget_gate_trainable: bool = False,
-                     beta_init: float = 0.85, alpha_init: float = 0.05, omega_init: float = 0.0,
+                     beta_init: float = 0.85, alpha_init: float = 0.05, omega_init: float = 0.05,
                      persistence_max: float = 0.999,
                      gate_saturation_bias: float = 30.0,
                      name: str = "restricted_gate_lstm_cell", **kwargs):
@@ -238,7 +238,22 @@ def _build_restricted_cell_class():
 
         @property
         def omega_hat(self):
-            return tf.nn.softplus(self.omega_raw)
+            # sigma2_train_scaler undoes the input scaling here too, same
+            # as alpha_hat*sigma2_train_scaler*x_t in call() below --
+            # omega_raw now lives in NORMALIZED units (a fraction of the
+            # series' own natural variance scale), not raw arch units.
+            # Previously omega_raw had to itself reach the raw target
+            # (0.7-23 across the 6 series, alpha's gradient path gets this
+            # same sigma2_train_scaler multiplier via x_t but omega's
+            # didn't) -- _inv_softplus(omega_init=0.0)'s floor put it deep
+            # in softplus's dead zone (raw~=-13.8, gradient~=1e-6) with no
+            # per-series adaptation. In normalized units, the same neutral
+            # alpha_init=0.05 prior now applies to omega too, landing
+            # omega_raw in the identical healthy gradient region alpha_raw
+            # already uses (raw~=-2.97, gradient~=0.049) -- the cross-series
+            # scale difference is absorbed by this multiplication, not by
+            # the initializer.
+            return tf.nn.softplus(self.omega_raw) * self.sigma2_train_scaler
 
         def call(self, inputs):
             # inputs: (batch, W, 1), Section-4-scaled x_t = eps2_t / sigma2_train.
@@ -312,13 +327,27 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
                               trainable, "the natural extension").
     beta_init               : float, default 0.85. Neutral starting point
                               for beta_hat when forget_gate_trainable.
-    alpha_init / omega_init : float, defaults 0.05 / 0.0. Neutral
-                              starting points for alpha_hat / omega_hat —
+    alpha_init / omega_init : float, both default 0.05. Neutral starting
+                              points for alpha_hat / omega_hat, in the
+                              SAME normalized units for both (omega_hat =
+                              softplus(omega_raw)*sigma2_train_scaler,
+                              mirroring alpha_hat*sigma2_train_scaler*x_t
+                              in call() -- see the omega_hat property).
                               NOT tied to any series' actual ARCH(1)/
                               GARCH(1,1) answer, so recovery at
                               convergence is genuine, not circular (same
                               principle as
                               src.models.ablation_ladder._NEUTRAL_*_INIT).
+                              Previously omega_init was in RAW arch units
+                              (default 0.0), which forced omega_raw deep
+                              into softplus's dead-gradient zone regardless
+                              of series (raw~=-13.8, gradient~=1e-6) with
+                              no per-series scale adaptation -- the
+                              normalized-units reparametrization fixes
+                              both at once: same healthy init as alpha,
+                              and the cross-series scale (0.7-23 across
+                              the 6 series) is absorbed by
+                              sigma2_train_scaler automatically.
     persistence_max          : float, default 0.999, forget_gate_trainable
                               only. Hard upper bound on alpha_hat+beta_hat
                               (persistence/mix reparametrization -- see
@@ -369,7 +398,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
     forget_gate_trainable = bool(hp.get("forget_gate_trainable", False))
     beta_init = hp.get("beta_init", 0.85)
     alpha_init = hp.get("alpha_init", 0.05)
-    omega_init = hp.get("omega_init", 0.0)
+    omega_init = hp.get("omega_init", 0.05)
     persistence_max = hp.get("persistence_max", 0.999)
 
     lr_or_schedule = (
