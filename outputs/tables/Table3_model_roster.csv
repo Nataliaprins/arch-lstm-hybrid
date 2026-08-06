@@ -13,5 +13,5 @@ CNN-LSTM,Panel B,DL,Conv1D + LSTM,Keras/TF,DL baseline
 LSTM-Attention,Panel B,DL,LSTM + Bahdanau attn,Keras/TF,DL baseline
 TCN,Panel B,DL,Dilated causal Conv,Keras/TF,DL baseline
 Transformer,Panel B,DL,Encoder-only transformer,Keras/TF,DL baseline
-LSTM-SSE-t-Student,Panel C,DL (proposed),LSTM + (1−λ)·MSE + λ·NLL_t,Keras/TF,Proposed model
 ARCH-LSTM,Panel C,DL (diagnostic),ARCH(1)-restricted LSTM cell (5 structural constraints),Keras/TF,"Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model)"
+GARCH-LSTM,Panel C,DL (diagnostic),"GARCH(1,1)-restricted LSTM cell (trainable forget gate, bounded persistence/mix reparametrization)",Keras/TF,"Optimizer diagnostic (GARCH(1,1) recovery, not a proposed forecasting model)"

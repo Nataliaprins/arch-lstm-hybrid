@@ -42,20 +42,6 @@
     "mcs_member": null
   },
   {
-    "series": "BTC-USD",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 2.608395710548986,
-    "ll_t_oos": -2.155593773336128,
-    "mcs_member": null
-  },
-  {
     "series": "ETH-USD",
     "rung": 0,
     "label": "GARCH(1,1)-t (MLE)",
@@ -95,20 +81,6 @@
     "half_life_days": null,
     "qlike_oos": 3.490012768043212,
     "ll_t_oos": -2.6100959702853737,
-    "mcs_member": null
-  },
-  {
-    "series": "ETH-USD",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 3.482061385052875,
-    "ll_t_oos": -2.608739869631742,
     "mcs_member": null
   },
   {
@@ -154,20 +126,6 @@
     "mcs_member": null
   },
   {
-    "series": "DJIA",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 0.6219420726058147,
-    "ll_t_oos": -1.1889129327843324,
-    "mcs_member": null
-  },
-  {
     "series": "SP500",
     "rung": 0,
     "label": "GARCH(1,1)-t (MLE)",
@@ -207,20 +165,6 @@
     "half_life_days": null,
     "qlike_oos": 0.5272806011794502,
     "ll_t_oos": -1.1544826921343114,
-    "mcs_member": null
-  },
-  {
-    "series": "SP500",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 0.633068276096071,
-    "ll_t_oos": -1.1885590287667334,
     "mcs_member": null
   },
   {
@@ -267,20 +211,6 @@
     "note": "LSTM-SSE not yet trained"
   },
   {
-    "series": "GOLD",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 2.8735330392404435,
-    "ll_t_oos": -1.9826267884504984,
-    "mcs_member": null
-  },
-  {
     "series": "OIL",
     "rung": 0,
     "label": "GARCH(1,1)-t (MLE)",
@@ -322,19 +252,5 @@
     "ll_t_oos": null,
     "mcs_member": null,
     "note": "LSTM-SSE not yet trained"
-  },
-  {
-    "series": "OIL",
-    "rung": 3,
-    "label": "LSTM-SSE-t-Student (proposed)",
-    "alpha": null,
-    "beta": null,
-    "omega": null,
-    "nu": null,
-    "persistence": null,
-    "half_life_days": null,
-    "qlike_oos": 3.2763615332856375,
-    "ll_t_oos": -2.4362467212671786,
-    "mcs_member": null
   }
 ]

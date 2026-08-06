@@ -1,5 +1,5 @@
 ,BTC-USD,BTC-USD,ETH-USD,ETH-USD,DJIA,DJIA,SP500,SP500,GOLD,GOLD,OIL,OIL
 ,β_cand,verdict,β_cand,verdict,β_cand,verdict,β_cand,verdict,β_cand,verdict,β_cand,verdict
-LSTM-SSE-t-Student vs. ARCH(1),0.989,Benchmark suff.,0.940*,Neither sig.,0.350,Neither sig.,51.785**,Adds info,38.310**,Adds info,1.761***,Adds info
-"LSTM-SSE-t-Student vs. GARCH(1,1)",1.160,Neither sig.,1.144,Neither sig.,-6.023,Neither sig.,48.922,Neither sig.,37.362,Neither sig.,-0.000,Neither sig.
-"NN-GARCH vs. GARCH(1,1)",3.649,Neither sig.,-3.184,Benchmark suff.,-1.459,Neither sig.,-0.656,Neither sig.,—,n/a,—,n/a
+GARCH-LSTM vs. ARCH(1),-0.016,Benchmark suff.,0.721,Neither sig.,0.024,Neither sig.,0.419,Neither sig.,0.969**,Both contribute,1.744***,Adds info
+"GARCH-LSTM vs. GARCH(1,1)",0.937,Neither sig.,1.238***,Adds info,-0.507,Neither sig.,-0.418,Neither sig.,0.494**,Adds info,-0.707,Neither sig.
+"NN-GARCH vs. GARCH(1,1)",3.649,Neither sig.,-3.184,Benchmark suff.,-1.459,Neither sig.,-0.656,Neither sig.,-0.008,Benchmark suff.,-0.049***,Both contribute
