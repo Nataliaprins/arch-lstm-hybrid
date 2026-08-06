@@ -587,15 +587,28 @@ def run_lambda_nu_sensitivity(
     lambda_grid: list[float] | None = None,
     nu_grid: list[float] | None = None,
     n_seeds: int | None = None,
-    batch_size: int | None = None,
+    batch_size: int | None = 32,
+    max_epochs_override: int | None = 500,
+    patience_override: int | None = 50,
 ) -> pd.DataFrame:
     """
     Orchestrates run_lambda_nu_sensitivity_series across every series in
     cfg["series"]. Grid/n_seeds default to config/config.yaml's
     arch_restricted_lambda_nu_sensitivity block when not passed explicitly.
-    batch_size: None preserves original behavior; pass an explicit value
-    to run every series/grid-point at that batch size (see
-    run_lambda_nu_sensitivity_series).
+
+    batch_size defaults to 32 (mini-batch, full_batch forced False) --
+    same footgun as run_series had: leaving this None would silently
+    inherit cfg["model"]["full_batch_training"]=True (meant only for
+    lstm_t_student), known worse on this architecture. Pass None
+    explicitly only if you specifically want that original full-batch
+    behavior back.
+
+    max_epochs_override/patience_override default to 500/50 (same "cheap
+    comparative pass" convention as search_batch_size) -- this sweep is
+    |lambda_grid|*|nu_grid| combinations *per series* (30 at the default
+    grid), so the full 1000/patience-20 single-point diagnostic budget
+    here would be prohibitively slow across all 6 series. Pass None/None
+    to restore the uncapped budget.
     """
     cfg = load_config(config_path)
     models_dir = Path(cfg["paths"]["models"])
@@ -617,7 +630,8 @@ def run_lambda_nu_sensitivity(
         series = series_cfg["name"]
         log.info("══ ARCH-restricted (λ,ν) sensitivity: %s ══", series)
         all_rows.extend(run_lambda_nu_sensitivity_series(
-            series, cfg, models_dir, lambda_grid, nu_grid, n_seeds, batch_size=batch_size))
+            series, cfg, models_dir, lambda_grid, nu_grid, n_seeds, batch_size=batch_size,
+            max_epochs_override=max_epochs_override, patience_override=patience_override))
 
     df = pd.DataFrame(all_rows)
     df.to_csv(tables_dir / "TableC2_arch_restricted_lambda_nu_sensitivity.csv", index=False)
