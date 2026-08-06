@@ -408,7 +408,7 @@ def build_arch_restricted_lstm(hp: dict) -> "tf.keras.Model":
 
     RestrictedCell = _build_restricted_cell_class()
 
-    model_name = "GARCH11-Restricted-LSTM" if forget_gate_trainable else "ARCH-LSTM"
+    model_name = "GARCH-LSTM" if forget_gate_trainable else "ARCH-LSTM"
 
     inp = tf.keras.Input(shape=(W, 1), name="eps_window_scaled")
     out = RestrictedCell(

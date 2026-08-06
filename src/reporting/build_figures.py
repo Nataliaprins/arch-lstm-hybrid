@@ -493,14 +493,14 @@ def run(config_path: str) -> None:
     build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir,
                                 model_folder="ARCH-LSTM", model_builder=build_arch_restricted_lstm)
 
-    log.info("Building forecast-vs-observed figures (GARCH11-Restricted-LSTM, by split) …")
+    log.info("Building forecast-vs-observed figures (GARCH-LSTM, by split) …")
     # Same builder as ARCH-LSTM -- build_arch_restricted_lstm reads
     # forget_gate_trainable=True from each series' own saved
     # best_hparams.json, no separate factory needed. No-ops with a
     # warning per series until the official run has actually produced
-    # outputs/models/GARCH11-Restricted-LSTM/<series>/seed_*/ weights.
+    # outputs/models/GARCH-LSTM/<series>/seed_*/ weights.
     build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir,
-                                model_folder="GARCH11-Restricted-LSTM", model_builder=build_arch_restricted_lstm)
+                                model_folder="GARCH-LSTM", model_builder=build_arch_restricted_lstm)
 
     log.info("Building ARCH(1) vs ARCH-LSTM forecast figures …")
     for series in series_list:

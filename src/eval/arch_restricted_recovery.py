@@ -53,7 +53,7 @@ estimated ARCH(1)/GARCH(1,1) reference params):
       sigma2_per_seed.npy, sigma2_std.npy, best_hparams.json,
       timing.json, histories.json, seed_XXX/weights.weights.h5,
       recovered_params_per_seed.json)
-  outputs/models/GARCH11-Restricted-LSTM/<series>/...     (only if
+  outputs/models/GARCH-LSTM/<series>/...     (only if
       --include-garch)
   outputs/tables/TableC1_arch_restricted_recovery.csv
   outputs/tables/arch_restricted_recovery_raw.json
@@ -866,7 +866,7 @@ def run_series(series: str, cfg: dict, models_dir: Path, include_garch: bool) ->
     # be untested on this architecture and known-worse on the ARCH(1) arm.
     if include_garch:
         garch_ref = load_garch11_reference(series, models_dir)
-        garch_out_dir = models_dir / "GARCH11-Restricted-LSTM" / series
+        garch_out_dir = models_dir / "GARCH-LSTM" / series
         garch_result = train_restricted_multiseed(
             series, data, windows, cfg, garch_out_dir,
             forget_gate_trainable=True, sigma2_train_scaler=sigma2_train_scaler,
@@ -879,14 +879,14 @@ def run_series(series: str, cfg: dict, models_dir: Path, include_garch: bool) ->
         garch_llt = ll_t_oos(garch_result["sigma2_test"][:n], test_eps2[:n], nu=garch_result["nu_hat"])
 
         row = {
-            "series": series, "config": "GARCH(1,1)-restricted",
+            "series": series, "config": "GARCH-LSTM",
             **garch_check,
             "nu_ref": garch_ref["nu"], "nu_recovered": garch_result["nu_hat"],
             "qlike_oos": garch_qlike, "ll_t_oos": garch_llt,
         }
         rows.append(row)
         log.info(
-            "%s  GARCH(1,1)-restricted  alpha_ref=%.6f alpha_rec=%.6f rel_err=%.4f  "
+            "%s  GARCH-LSTM  alpha_ref=%.6f alpha_rec=%.6f rel_err=%.4f  "
             "beta_ref=%.6f beta_rec=%.6f rel_err=%.4f  "
             "omega_ref=%.6f omega_rec=%.6f rel_err=%.4f  verdict=%s",
             series, row["alpha_ref"], row["alpha_recovered"], row["rel_err_alpha"],
