@@ -119,7 +119,7 @@ def build_trainval_curves(
     series_list: list[str],
     models_dir:  Path,
     fig_dir:     Path,
-    model_folder: str = "LSTM-SSE-t-Student",
+    model_folder: str = "GARCH-LSTM",
 ) -> None:
     for series in series_list:
         hist_f = models_dir / model_folder / series / "histories.json"
@@ -172,7 +172,7 @@ def build_gate_dynamics(
     models_dir:  Path,
     processed_dir: Path,
     fig_dir:     Path,
-    model_folder: str = "LSTM-SSE-t-Student",
+    model_folder: str = "GARCH-LSTM",
 ) -> None:
     for series in series_list:
         per_seed_f = models_dir / model_folder / series / "sigma2_per_seed.npy"
@@ -216,7 +216,7 @@ def build_var_figures(
     models_dir:   Path,
     processed_dir: Path,
     fig_dir:      Path,
-    model:        str = "LSTM-SSE-t-Student",
+    model:        str = "GARCH-LSTM",
     level:        float = 0.99,
 ) -> None:
     from src.eval.var_es_backtest import compute_var_t
@@ -268,7 +268,7 @@ def build_forecast_vs_observed(
     models_dir:    Path,
     processed_dir: Path,
     fig_dir:       Path,
-    model_folder:  str = "LSTM-SSE-t-Student",
+    model_folder:  str = "GARCH-LSTM",
     model_builder: "Callable[[dict], object] | None" = None,
 ) -> None:
     """
@@ -283,11 +283,12 @@ def build_forecast_vs_observed(
 
     model_builder: the hp-dict -> tf.keras.Model factory matching
     model_folder's saved weights (default None resolves to
-    src.models.neural.build_lstm_t_student, i.e. the original
-    LSTM-SSE-t-Student-only behavior). Pass
-    src.models.arch_restricted.build_arch_restricted_lstm for ARCH-LSTM --
-    a mismatched builder will fail to load_weights (different architecture,
-    different tensor shapes), not silently produce wrong numbers.
+    src.models.arch_restricted.build_arch_restricted_lstm, matching the
+    default model_folder="GARCH-LSTM" -- forget_gate_trainable is read
+    from that series' own saved best_hparams.json, no override needed).
+    A mismatched builder will fail to load_weights (different
+    architecture, different tensor shapes), not silently produce wrong
+    numbers.
 
     Window/target alignment (see src.tuning.tune_and_train._make_windows
     and _run_model_series): y_train's dates are train dates[window:]  (the
@@ -302,8 +303,8 @@ def build_forecast_vs_observed(
     from src.losses.hybrid_student_t import sigma2_from_direct_output
 
     if model_builder is None:
-        from src.models.neural import build_lstm_t_student
-        model_builder = build_lstm_t_student
+        from src.models.arch_restricted import build_arch_restricted_lstm
+        model_builder = build_arch_restricted_lstm
 
     W = cfg["data"]["window"]
 
@@ -473,8 +474,11 @@ def run(config_path: str) -> None:
     raw_f = tables_dir / "raw_results.json"
     raw_results = json.loads(raw_f.read_text()) if raw_f.exists() else {}
 
-    log.info("Building λ-sensitivity figure …")
-    build_lambda_sensitivity(series_list, models_dir, figures_dir)
+    # build_lambda_sensitivity (LSTM-SSE-t-Student's own lambda sweep) and
+    # the default (no model_folder) build_forecast_vs_observed call are
+    # gone -- LSTM-SSE-t-Student is no longer trained/reported (see
+    # tune_and_train.py's NEURAL_MODELS); GARCH-LSTM's own
+    # forecast_vs_observed call below already covers that figure's role.
 
     log.info("Building train/val curves …")
     build_trainval_curves(series_list, models_dir, figures_dir)
@@ -484,9 +488,6 @@ def run(config_path: str) -> None:
 
     log.info("Building VaR hit-sequence figures …")
     build_var_figures(series_list, raw_results, models_dir, processed_dir, figures_dir)
-
-    log.info("Building forecast-vs-observed figures …")
-    build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir)
 
     log.info("Building forecast-vs-observed figures (ARCH-LSTM, by split) …")
     from src.models.arch_restricted import build_arch_restricted_lstm

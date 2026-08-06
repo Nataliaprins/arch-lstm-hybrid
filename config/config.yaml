@@ -61,17 +61,14 @@ hyperparameter_search:
   lstm_units:    [16, 32, 64, 128]
   nu:            [3, 4, 5, 6, 7, 8]          # grados de libertad Student-t
   dropout:       [0.0, 0.1, 0.2, 0.3]
-  lambda_values: [0.1, 0.3, 0.5, 0.7, 0.9]   # peso pérdida híbrida
   batch_size:    [32, 64, 128]
   max_epochs:    1000
   patience:      20    # early-stopping
   n_trials:      50    # ensayos Keras Tuner
   cv_splits:     5     # TimeSeriesSplit k-folds
-  full_batch_max_epochs: 5000   # solo si model.full_batch_training=true (solo lstm_t_student)
+  full_batch_max_epochs: 5000   # solo si full_batch=true (fallback compartido por train_restricted_multiseed
+                                 # y _train_one cuando no se pasa batch_size/full_batch explícito)
   full_batch_patience:   300    # early-stopping cuenta gradientes, no minibatches -> paciencia mayor
-
-# ── Análisis de sensibilidad de λ (exigido por Jurado 1) ──
-lambda_sensitivity: [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
 
 # ── Model Confidence Set ──
 mcs:
@@ -160,8 +157,3 @@ arch_restricted_lambda_nu_sensitivity:
   lambda_grid: [0.0, 0.3, 0.5, 0.7, 0.9, 1.0]
   nu_grid: [3, 5, 10, 30, 100]
   n_seeds: 3
-
-# ── Reentrenar solo el modelo propuesto en las 6 series (batch completo) ──
-# Los otros 6 modelos econométricos ya tienen resultados válidos y no se
-# re-corren (MSGARCH nunca corrió -- R no está instalado en este entorno).
-train_only_models: [lstm_t_student]

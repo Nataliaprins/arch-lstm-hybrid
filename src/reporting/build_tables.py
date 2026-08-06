@@ -255,8 +255,6 @@ ROSTER_DATA = [
     ("Panel B", "TCN",             "DL",          "Dilated causal Conv",  "Keras/TF",         "DL baseline"),
     ("Panel B", "Transformer",     "DL",          "Encoder-only transformer", "Keras/TF",     "DL baseline"),
     # Panel C — Proposed
-    ("Panel C", "LSTM-SSE-t-Student", "DL (proposed)",
-     "LSTM + (1−λ)·MSE + λ·NLL_t", "Keras/TF", "Proposed model"),
     ("Panel C", "ARCH-LSTM", "DL (diagnostic)",
      "ARCH(1)-restricted LSTM cell (5 structural constraints)", "Keras/TF",
      "Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model)"),
@@ -286,7 +284,7 @@ PANEL_ORDER = {
                 "FIGARCH(1,d,1)", "MSGARCH(1,1)", "HAR"],
     "Panel B": ["SVR-GARCH", "NN-GARCH", "LSTM-SSE", "CNN-LSTM",
                 "LSTM-Attention", "TCN", "Transformer"],
-    "Panel C": ["LSTM-SSE-t-Student", "ARCH-LSTM", "GARCH-LSTM"],
+    "Panel C": ["ARCH-LSTM", "GARCH-LSTM"],
     # Section 9.2: minimum-bar reference forecast every other model must beat.
     "Panel D": ["Constant (unconditional variance)"],
 }
@@ -496,7 +494,7 @@ def build_table8(all_results: dict, series_list: list[str], out_dir: Path) -> No
 def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> None:
     all_models = sorted({
         m for s in all_results.values()
-        for m in s if m != "LSTM-SSE-t-Student"
+        for m in s if m != "GARCH-LSTM"
     })
 
     col_tuples = [(s, stat) for s in series_list for stat in ["DM", "p(Holm)", "TOST p"]]
@@ -525,7 +523,7 @@ def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> No
 
     df = pd.DataFrame(rows, index=all_models, columns=cols)
     note = (
-        "Diebold–Mariano test: LSTM-SSE-t-Student vs. each rival model. "
+        "Diebold–Mariano test: GARCH-LSTM vs. each rival model. "
         "Loss function: QLIKE. HAC SE (Newey–West, bandwidth ⌊4(T/100)^{2/9}⌋). "
         "p(Holm): p-value after Holm–Bonferroni FWER correction per market. "
         "Positive DM stat: rival has higher loss → proposed wins. "
@@ -1068,15 +1066,15 @@ def build_table13_gate_correspondence(tables_dir: Path) -> None:
 
 def build_table_b1(tables_dir: Path) -> None:
     """
-    Table B1: per series x rung (0-3), the recovered/estimated GARCH-like
+    Table B1: per series x rung (0-2), the recovered/estimated GARCH-like
     parameters (rungs 0-1) or a cross-reference to Table 11's gate
-    correspondence (rungs 2-3, where alpha/beta are not directly
-    estimated parameters but gate statistics -- see
-    src.eval.gate_correspondence, Section 9.3), plus implied
-    persistence, half-life, QLIKE(OOS), LL_t(OOS).
+    correspondence (rung 2, where alpha/beta are not directly estimated
+    parameters but gate statistics -- see src.eval.gate_correspondence,
+    Section 9.3), plus implied persistence, half-life, QLIKE(OOS),
+    LL_t(OOS).
 
     Source: outputs/tables/ablation_ladder_raw.json
-    (src.models.ablation_ladder.run). Rungs 2-3 rows are left with
+    (src.models.ablation_ladder.run). Rung 2's row is left with
     alpha/beta/omega/nu = '—' if that model hasn't been trained yet, or
     if not yet cross-referenced to Table 11.
     """
@@ -1091,7 +1089,6 @@ def build_table_b1(tables_dir: Path) -> None:
         0: "0 — GARCH(1,1)-t (MLE)",
         1: "1 — Constrained LSTM (pure Student-t MLE)",
         2: "2 — LSTM-SSE (free gates, SSE loss)",
-        3: "3 — LSTM-SSE-t-Student (proposed)",
     }
 
     rows = []
@@ -1120,10 +1117,10 @@ def build_table_b1(tables_dir: Path) -> None:
         "start (alpha0=0.05, beta0=0.85) -- NOT the GARCH answer -- so recovering "
         "alpha\\_hat, beta\\_hat is a genuine, non-circular test of Proposition 2 "
         "(see logs/proposition2\\_check.log for the PASS/FAIL verdict per "
-        "series, tolerance 10\\% relative error). Rungs 2-3 report the "
-        "already-trained LSTM-SSE / LSTM-SSE-t-Student models as-is; their "
-        "gate statistics (analogous to alpha, beta under Proposition 2's "
-        "mapping) are in Table 11, not duplicated here. Half-life = "
+        "series, tolerance 10\\% relative error). Rung 2 reports the "
+        "already-trained LSTM-SSE model as-is; its gate statistics "
+        "(analogous to alpha, beta under Proposition 2's mapping) are in "
+        "Table 11, not duplicated here. Half-life = "
         "ln(0.5)/ln(beta). QLIKE and LL\\_t evaluated OOS on the test split."
     )
     stem = tables_dir / "TableB1_ablation_ladder"
@@ -1432,9 +1429,10 @@ def run(config_path: str) -> None:
         log.info("Building Table A%d (estimation %s) …", idx, series)
         build_table_Ax(series, idx, models_dir, tables_dir)
 
-    # ── Table 13: gate <-> GARCH parameter correspondence (Section 9.3) ──────
-    log.info("Building Table 13 (gate correspondence) …")
-    build_table13_gate_correspondence(tables_dir)
+    # Table 13 (gate <-> GARCH parameter correspondence, Section 9.3) removed
+    # along with LSTM-SSE-t-Student -- see build_table13_gate_correspondence's
+    # docstring / Makefile's eval target comment for why it doesn't transfer
+    # to ARCH-LSTM/GARCH-LSTM's structurally-fixed gates.
 
     # ── Table B1: ablation ladder (Section 7 / Proposition 2) ────────────────
     log.info("Building Table B1 (ablation ladder) …")

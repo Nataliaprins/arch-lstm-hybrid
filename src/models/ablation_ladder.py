@@ -1,7 +1,9 @@
 """
 ablation_ladder.py — Section 7: numerical verification of Proposition 2.
 
-Four independent rungs, run per series:
+Three independent rungs, run per series (a former Rung 3, the already-
+trained LSTM-SSE-t-Student model with the normalized hybrid loss, was
+removed along with that model -- see tune_and_train.py's NEURAL_MODELS):
 
   Rung 0  GARCH(1,1)-t MLE (already estimated; src.models.econometric).
           Reference point.
@@ -17,8 +19,6 @@ Four independent rungs, run per series:
   Rung 2  Free gates, SSE loss -- this IS the already-trained LSTM-SSE
           model (src.tuning.tune_and_train); no new training here, just
           reporting.
-  Rung 3  + normalized hybrid loss -- this IS the already-trained
-          LSTM-SSE-t-Student (proposed) model; no new training here.
 
 Rung 1 is implemented with a hand-written RNN cell (not the built-in
 tf.keras.layers.LSTM) because Keras' LSTM exposes kernel/recurrent_kernel/
@@ -253,9 +253,9 @@ def check_proposition2(rung1: dict, rung0_params: dict, tolerance: float = _RECO
 def load_trained_rung_results(folder: str, series: str, models_dir: Path,
                                test_eps2: np.ndarray) -> dict | None:
     """
-    Read sigma2_test.npy for an already-trained model (LSTM-SSE for Rung 2,
-    LSTM-SSE-t-Student for Rung 3) and compute QLIKE / LL_t(OOS).
-    Returns None if the model hasn't been trained yet.
+    Read sigma2_test.npy for an already-trained model (LSTM-SSE for Rung 2)
+    and compute QLIKE / LL_t(OOS). Returns None if the model hasn't been
+    trained yet.
     """
     from src.eval.metrics import qlike, ll_t_oos
 
@@ -361,10 +361,12 @@ def run(config_path: str = "config/config.yaml") -> list[dict]:
             prop2_fh.write(line)
             log.info(line.strip())
 
-            # ── Rungs 2-3: pull already-trained models (if available) ──────
+            # ── Rung 2: pull already-trained model (if available) ──────────
+            # Rung 3 (LSTM-SSE-t-Student) removed -- that model is no
+            # longer trained/reported (see tune_and_train.py's
+            # NEURAL_MODELS).
             for rung_idx, folder, label in [
                 (2, "LSTM-SSE", "LSTM-SSE (free gates, SSE loss)"),
-                (3, "LSTM-SSE-t-Student", "LSTM-SSE-t-Student (proposed)"),
             ]:
                 res = load_trained_rung_results(folder, series, models_dir, test_eps2)
                 if res is None:

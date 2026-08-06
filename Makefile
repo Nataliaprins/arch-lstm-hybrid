@@ -48,16 +48,20 @@ $(STAMPS)/models: $(STAMPS)/data
 	$(PYTHON) -m $(SRC).tuning.tune_and_train  --config config/config.yaml
 	@touch $@
 
-## eval: métricas OOS, DM+Holm, MCS, bootstrap, VaR/ES, sensibilidad de λ, degeneración, correspondencia de compuertas, escalera de ablación
+## eval: métricas OOS, DM+Holm, MCS, bootstrap, VaR/ES, degeneración, escalera de ablación
+# gate_correspondence (Table 13) removed: it analyzes LSTM-SSE-t-Student's
+# free/unconstrained gates specifically (does a free LSTM discover
+# GARCH-like dynamics on its own?) -- that model is no longer trained,
+# and the question doesn't transfer to ARCH-LSTM/GARCH-LSTM, whose gates
+# are structurally fixed/derived by design, not freely learned.
 eval: $(STAMPS)/eval
 $(STAMPS)/eval: $(STAMPS)/models
 	$(PYTHON) -m $(SRC).eval.run_all_metrics       --config config/config.yaml
 	$(PYTHON) -m $(SRC).eval.degeneracy            --config config/config.yaml
-	$(PYTHON) -m $(SRC).eval.gate_correspondence   --config config/config.yaml
 	$(PYTHON) -m $(SRC).models.ablation_ladder     --config config/config.yaml
 	@touch $@
 
-## tables: emite Tablas 3–13, B1 y A1–A4 en .csv, .tex y .docx
+## tables: emite Tablas 3–12, B1 y A1–A4 en .csv, .tex y .docx (Tabla 13 removida junto con LSTM-SSE-t-Student)
 tables: $(STAMPS)/tables
 $(STAMPS)/tables: $(STAMPS)/eval
 	$(PYTHON) -m $(SRC).reporting.build_tables --config config/config.yaml

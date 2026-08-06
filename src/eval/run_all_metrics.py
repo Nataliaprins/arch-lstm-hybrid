@@ -56,14 +56,15 @@ ABERRANT_QLIKE_MEDIAN_MULTIPLE = 20.0
 ABERRANT_QLIKE_ABS_FLOOR = 50.0  # also require QLIKE to be implausibly large in absolute terms
 
 # ── Forecast-encompassing pairs (candidate, benchmark) ──────────────────────
-# LSTM-SSE-t-Student is checked against both ARCH(1) (the model it is meant
-# to echo — heavy-tailed, first-order recursion) and GARCH(1,1) (the
-# project's canonical benchmark). NN-GARCH is checked against GARCH(1,1)
-# since its input is literally the GARCH(1,1) filtered variance.
+# GARCH-LSTM (the proposed model as of the LSTM-SSE-t-Student removal) is
+# checked against both ARCH(1) (the model it is meant to echo — heavy-
+# tailed, first-order recursion) and GARCH(1,1) (the project's canonical
+# benchmark). NN-GARCH is checked against GARCH(1,1) since its input is
+# literally the GARCH(1,1) filtered variance.
 ENCOMPASSING_PAIRS = [
-    ("LSTM-SSE-t-Student", "ARCH(1)"),
-    ("LSTM-SSE-t-Student", "GARCH(1,1)"),
-    ("NN-GARCH",           "GARCH(1,1)"),
+    ("GARCH-LSTM", "ARCH(1)"),
+    ("GARCH-LSTM", "GARCH(1,1)"),
+    ("NN-GARCH",   "GARCH(1,1)"),
 ]
 
 
@@ -104,7 +105,6 @@ NEURAL_FOLDERS = {
     "LSTM-Attention":    "LSTM-Attention",
     "TCN":               "TCN",
     "Transformer":       "Transformer",
-    "LSTM-SSE-t-Student": "LSTM-SSE-t-Student",
     "ARCH-LSTM":         "ARCH-LSTM",
     "GARCH-LSTM":        "GARCH-LSTM",
 }
@@ -368,8 +368,8 @@ def run(config_path: str) -> None:
         for model in model_results:
             model_results[model]["mcs_90"] = mcs_result.get(model, None)
 
-        # ── Diebold–Mariano (LSTM-SSE-t-Student vs. all) ─────────────────────
-        proposed = "LSTM-SSE-t-Student"
+        # ── Diebold–Mariano (GARCH-LSTM vs. all) ─────────────────────────────
+        proposed = "GARCH-LSTM"
         if proposed in qlike_arrays:
             proposed_ql  = qlike_arrays[proposed]
             proposed_mse = mse_arrays[proposed]

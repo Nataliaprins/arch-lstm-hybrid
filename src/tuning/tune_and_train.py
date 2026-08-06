@@ -1081,7 +1081,6 @@ def run(config_path: str) -> None:
         ("lstm_attention",    build_lstm_attention,      "LSTM-Attention"),
         ("tcn",               build_tcn,                 "TCN"),
         ("transformer",       build_transformer,         "Transformer"),
-        ("lstm_t_student",    build_lstm_t_student,      "LSTM-SSE-t-Student"),
     ]
 
     # Optional config filter: keep only selected models.
@@ -1100,7 +1099,12 @@ def run(config_path: str) -> None:
                 "(e.g. LSTM-SSE-t-Student)."
             )
 
-    run_lambda_sensitivity = bool(cfg.get("run_lambda_sensitivity", True))
+    # lstm_t_student (LSTM-SSE-t-Student) removed from NEURAL_MODELS above --
+    # this sweep is entirely about that model's own lambda (hardcoded to
+    # models_dir/"LSTM-SSE-t-Student"/<series>), so it's forced off
+    # regardless of cfg, rather than left to silently build/report a
+    # model that's no longer trained.
+    run_lambda_sensitivity = False
     n_seeds = cfg["n_seeds"]
 
     # Resumability freshness cutoff: .stamps/data is (re)written at the very
