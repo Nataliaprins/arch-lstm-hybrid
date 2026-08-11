@@ -4,7 +4,9 @@
 \label{tab:cross_market}
 \begin{tabular}{lrrrrrrrrrrrr}
 \toprule
- & ('BTC-USD', 'Δ%MSE') & ('BTC-USD', 'Δ%MAE') & ('ETH-USD', 'Δ%MSE') & ('ETH-USD', 'Δ%MAE') & ('DJIA', 'Δ%MSE') & ('DJIA', 'Δ%MAE') & ('SP500', 'Δ%MSE') & ('SP500', 'Δ%MAE') & ('GOLD', 'Δ%MSE') & ('GOLD', 'Δ%MAE') & ('OIL', 'Δ%MSE') & ('OIL', 'Δ%MAE') \\
+ & \multicolumn{2}{c}{BTC-USD} & \multicolumn{2}{c}{ETH-USD} & \multicolumn{2}{c}{DJIA} & \multicolumn{2}{c}{SP500} & \multicolumn{2}{c}{GOLD} & \multicolumn{2}{c}{OIL} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+ & Δ%MSE & Δ%MAE & Δ%MSE & Δ%MAE & Δ%MSE & Δ%MAE & Δ%MSE & Δ%MAE & Δ%MSE & Δ%MAE & Δ%MSE & Δ%MAE \\
 \midrule
 ARCH(1) & \textbf{+280.41} & \textbf{+282.21} & \textbf{+19.91} & \textbf{+36.96} & \textbf{+38.55} & \textbf{+28.33} & \textbf{+51.30} & \textbf{+43.75} & +4.66 & -11.20 & +14.80 & +4.44 \\
 ARCH-LSTM & \textbf{-6.60} & \textbf{+17.68} & \textbf{-2.50} & \textbf{+1.38} & -0.48 & +2.10 & +5.12 & +12.26 & +10.41 & +0.42 & +12.23 & -6.75 \\

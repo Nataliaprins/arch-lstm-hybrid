@@ -1,5 +1,5 @@
 """
-build_tables.py — Emit Tables 1, 3–13, B1, 4e, and A1–A4 in .csv, .tex (booktabs), .docx.
+build_tables.py — Emit Tables 1–2, 3–13, B1, 4e, and A1–A4 in .csv, .tex (booktabs), .docx.
 
 Usage:
     python -m src.reporting.build_tables --config config/config.yaml
@@ -9,8 +9,9 @@ Input:  outputs/tables/raw_results.json
         outputs/tables/degeneracy_flags.json
         outputs/tables/gate_correspondence_raw.json
         outputs/tables/ablation_ladder_raw.json
-        outputs/models/<model>/<series>/{params.json, fit_info.json}
-        data/processed/<series>/returns.csv
+        outputs/models/<model>/<series>/{params.json, fit_info.json,
+            sigma2_test.npy or .csv}
+        data/processed/<series>/{returns.csv, test_eps.csv, train_eps.csv}
 Output: outputs/tables/  *.csv  *.tex  *.docx
 
 Table numbering (paper convention; every number below is unique --
@@ -18,6 +19,8 @@ Section 9.6 fixed a "Table 4" collision between the per-series OOS
 tables and the GARCH estimation table, which is Table 4e)
 ------------------------------------------------------------------
 Table 1       — Descriptive statistics of the six raw return series
+Table 2       — Residual diagnostics by model (kurtosis, LBQ²(20),
+                ARCH-LM(20) on each model's standardized OOS residuals)
 Table 3       — Model roster (static)
 Tables 4–7    — OOS performance, one per series (includes Panel D, the
                 constant-forecast reference row, and a DEGENERATE column)
@@ -114,6 +117,13 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
     "l" column per level -- str(idx) on a MultiIndex row is a Python
     tuple, which would otherwise render literally as
     "('BTC-USD', '0 -- GARCH...')" in the output.
+
+    A MultiIndex on the COLUMNS (e.g. per-series (Kurt, LBQ2, ARCH-LM)
+    blocks -- Tables 2, 8, 9, 10, C3, C4) gets a two-row booktabs header:
+    one \\multicolumn group label per top level with a \\cmidrule under
+    it, then the sub-level labels -- instead of str(col) on a column
+    tuple, which would otherwise render literally as
+    "('BTC-USD', 'Kurt')" in the header.
     """
     panel_rows = panel_rows or set()
     is_multi = isinstance(df.index, pd.MultiIndex)
@@ -130,8 +140,30 @@ def _save_tex(df: pd.DataFrame, path: Path, caption: str, label: str, note: str 
         "\\toprule",
     ]
     # Header
-    header  = " & ".join(idx_names) + " & " + " & ".join(str(c) for c in df.columns) + " \\\\"
-    lines.append(header)
+    is_multi_col = isinstance(df.columns, pd.MultiIndex)
+    if is_multi_col:
+        groups: list[tuple[str, int]] = []
+        for top in df.columns.get_level_values(0):
+            if groups and groups[-1][0] == top:
+                groups[-1] = (top, groups[-1][1] + 1)
+            else:
+                groups.append((top, 1))
+        top_row = " & " * n_idx + " & ".join(
+            f"\\multicolumn{{{span}}}{{c}}{{{g}}}" if span > 1 else str(g)
+            for g, span in groups
+        ) + " \\\\"
+        col = n_idx + 1
+        rule = ""
+        for _, span in groups:
+            rule += f"\\cmidrule(lr){{{col}-{col + span - 1}}}"
+            col += span
+        sub_row = " & ".join(idx_names) + " & " + " & ".join(
+            str(c[-1]) for c in df.columns
+        ) + " \\\\"
+        lines += [top_row, rule, sub_row]
+    else:
+        header = " & ".join(idx_names) + " & " + " & ".join(str(c) for c in df.columns) + " \\\\"
+        lines.append(header)
     lines.append("\\midrule")
     # Rows
     for idx, row in df.iterrows():
@@ -166,6 +198,12 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
     column per level -- str(idx) on a MultiIndex row is a Python tuple,
     which would otherwise render literally as
     "('BTC-USD', '0 -- GARCH...')" in the first cell.
+
+    A MultiIndex on the COLUMNS (Tables 2, 8, 9, 10, C3, C4) gets a second
+    header row: merged, bold group-label cells (one per top level, e.g.
+    each series) above the sub-level labels -- instead of str(col) on a
+    column tuple, which would otherwise render literally as
+    "('BTC-USD', 'Kurt')" in the header cell.
     """
     try:
         from docx import Document
@@ -179,24 +217,49 @@ def _save_docx(df: pd.DataFrame, path: Path, title: str, note: str = "",
     is_multi = isinstance(df.index, pd.MultiIndex)
     idx_names = [str(n) if n else "Model" for n in df.index.names] if is_multi else [df.index.name or "Model"]
     n_idx = len(idx_names)
+    is_multi_col = isinstance(df.columns, pd.MultiIndex)
+    header_rows = 2 if is_multi_col else 1
 
     doc   = Document()
     doc.add_heading(title, level=2)
 
     n_cols = len(df.columns) + n_idx
-    table  = doc.add_table(rows=1 + len(df), cols=n_cols)
+    table  = doc.add_table(rows=header_rows + len(df), cols=n_cols)
     table.style = "Table Grid"
 
-    # Header row
-    hdr = table.rows[0].cells
-    for i, name in enumerate(idx_names):
-        hdr[i].text = name
-    for j, col in enumerate(df.columns):
-        hdr[n_idx + j].text = str(col)
+    if is_multi_col:
+        groups: list[tuple[str, int]] = []
+        for top in df.columns.get_level_values(0):
+            if groups and groups[-1][0] == top:
+                groups[-1] = (top, groups[-1][1] + 1)
+            else:
+                groups.append((top, 1))
+
+        top_hdr = table.rows[0].cells
+        col = n_idx
+        for g, span in groups:
+            cell = top_hdr[col].merge(top_hdr[col + span - 1]) if span > 1 else top_hdr[col]
+            cell.text = str(g)
+            for para in cell.paragraphs:
+                for run in para.runs:
+                    run.font.bold = True
+            col += span
+
+        sub_hdr = table.rows[1].cells
+        for i, name in enumerate(idx_names):
+            sub_hdr[i].text = name
+        for j, col_tuple in enumerate(df.columns):
+            sub_hdr[n_idx + j].text = str(col_tuple[-1])
+    else:
+        hdr = table.rows[0].cells
+        for i, name in enumerate(idx_names):
+            hdr[i].text = name
+        for j, col in enumerate(df.columns):
+            hdr[n_idx + j].text = str(col)
 
     # Data rows
     for i, (idx, row) in enumerate(df.iterrows()):
-        cells = table.rows[i + 1].cells
+        cells = table.rows[i + header_rows].cells
         idx_vals = list(idx) if is_multi else [idx]
         if idx in panel_rows:
             merged = cells[0].merge(cells[-1]) if n_cols > 1 else cells[0]
@@ -1062,6 +1125,175 @@ def build_table_Ax(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Table 2 — Residual diagnostics by model (Kurtosis, LBQ²(20), ARCH-LM(20))
+#
+# Placed here in the file (not next to Table 1) because it reuses
+# PANEL_ORDER (defined above build_table_oos) and ECON_MODEL_FOLDERS
+# (defined above build_table_Ax) rather than duplicating either mapping;
+# it still runs as "Table 2" in run() (right after Table 1).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _model_folder_candidates(display: str) -> list[str]:
+    """Folder name(s) on disk for a display model name. Econometric models
+    have several historical folder-naming variants (ECON_MODEL_FOLDERS);
+    neural models (Panel B/C) use their display name as the folder name
+    directly."""
+    return ECON_MODEL_FOLDERS.get(display, [display])
+
+
+def _load_sigma2_test(models_dir: Path, display: str, series: str) -> np.ndarray | None:
+    """
+    Load a model's OOS variance forecast for one series. Tries .npy first,
+    falling back to the .csv's "sigma2_test" column -- R/msgarch.R
+    (MSGARCH) writes .csv, every other model writes .npy (same fallback
+    as src.eval.run_all_metrics._load_sigma2).
+    """
+    for folder in _model_folder_candidates(display):
+        npy_path = models_dir / folder / series / "sigma2_test.npy"
+        if npy_path.exists():
+            return np.load(npy_path)
+        csv_path = models_dir / folder / series / "sigma2_test.csv"
+        if csv_path.exists():
+            return pd.read_csv(csv_path)["sigma2_test"].to_numpy(dtype=float)
+    return None
+
+
+def _residual_diag_cell(z: np.ndarray, nlags: int) -> dict:
+    kurt   = float(stats.kurtosis(z, fisher=True, bias=False))
+    lbq2   = acorr_ljungbox(z ** 2, lags=[nlags], return_df=True)
+    lbq2_p = float(lbq2["lb_pvalue"].iloc[0])
+    lm_stat, lm_p, _, _ = het_arch(z, nlags=nlags)
+    lm_p = float(lm_p)
+    return {
+        "Kurt":                f"{kurt:.4f}",
+        f"LBQ²({nlags}) p":    f"{lbq2_p:.4f}{_sig_stars(lbq2_p)}",
+        f"ARCH-LM({nlags}) p": f"{lm_p:.4f}{_sig_stars(lm_p)}",
+    }
+
+
+def build_table2_residual_diagnostics(
+    series_list: list[str],
+    models_dir: Path,
+    processed_dir: Path,
+    out_dir: Path,
+    nlags: int = 20,
+) -> None:
+    """
+    Table 2: residual-adequacy diagnostics of every tested model, on its
+    OOS standardized residuals z_t = eps_t / sigma_hat_t (sigma_hat_t from
+    that model's own sigma2_test forecast; eps_t from data/processed/
+    <series>/test_eps.csv). One row per model (same Panel A/B/C/D grouping
+    as build_table_oos), one 3-column block per series: excess kurtosis of
+    z_t, and the LBQ²(nlags) / ARCH-LM(nlags) p-values -- the same two
+    volatility-clustering diagnostics Table 1 runs on the raw series, now
+    run on what each model's variance forecast LEFT BEHIND. p >= 0.05 on
+    either test = that model removed the residual ARCH effect at that
+    series; a starred p < 0.05 = it did not. A model missing sigma2_test
+    for a given series is skipped for that one column ("--"), not for the
+    whole table; a model missing it for every series is dropped entirely.
+    """
+    series_data = {}
+    for series in series_list:
+        test_path  = processed_dir / series / "test_eps.csv"
+        train_path = processed_dir / series / "train_eps.csv"
+        if not test_path.exists() or not train_path.exists():
+            log.warning("test_eps.csv/train_eps.csv not found for %s — "
+                        "skipping Table 2 columns for that series.", series)
+            continue
+        test_eps       = pd.read_csv(test_path)["eps"].to_numpy(dtype=float)
+        train_eps2     = pd.read_csv(train_path)["eps"].to_numpy(dtype=float) ** 2
+        sigma2_uncond  = float(np.mean(train_eps2))
+        series_data[series] = {
+            "test_eps":      test_eps,
+            # Section 9.7's variance floor (src.eval.run_all_metrics),
+            # applied here too so a near-zero sigma2_hat can't blow up z_t.
+            "floor":         1e-6 * sigma2_uncond,
+            "sigma2_uncond": sigma2_uncond,
+        }
+
+    if not series_data:
+        log.warning("No test_eps.csv found for any series — skipping Table 2.")
+        return
+
+    stat_cols  = ["Kurt", f"LBQ²({nlags}) p", f"ARCH-LM({nlags}) p"]
+    col_tuples = [(s, c) for s in series_list for c in stat_cols]
+    cols       = pd.MultiIndex.from_tuples(col_tuples)
+    const_model = PANEL_ORDER["Panel D"][0]
+
+    rows = []
+    panel_rows: set = set()
+    for panel, models in PANEL_ORDER.items():
+        rows.append((panel, {}))
+        panel_rows.add(panel)
+        for model in models:
+            row = {}
+            found_any = False
+            for series in series_list:
+                sd = series_data.get(series)
+                if sd is None:
+                    for c in stat_cols:
+                        row[(series, c)] = "—"
+                    continue
+
+                if model == const_model:
+                    sigma2 = np.full(len(sd["test_eps"]), sd["sigma2_uncond"])
+                else:
+                    sigma2 = _load_sigma2_test(models_dir, model, series)
+
+                if sigma2 is None or len(sigma2) == 0:
+                    for c in stat_cols:
+                        row[(series, c)] = "—"
+                    continue
+
+                found_any = True
+                n  = min(len(sigma2), len(sd["test_eps"]))
+                s2 = np.maximum(sigma2[:n], sd["floor"])
+                z  = sd["test_eps"][:n] / np.sqrt(s2)
+                for c, v in _residual_diag_cell(z, nlags).items():
+                    row[(series, c)] = v
+
+            if found_any:
+                rows.append((model, row))
+
+    if len(rows) <= len(panel_rows):
+        log.warning("No sigma2_test files found for any (model, series) pair "
+                    "— skipping Table 2.")
+        return
+
+    df = pd.DataFrame(
+        [r for _, r in rows], index=[n for n, _ in rows], columns=cols
+    ).fillna("—")
+
+    note = (
+        "Standardized OOS residuals z_t = eps_t / sigma_hat_t, using each "
+        "model's own sigma2_test forecast (sigma2_test.npy, or .csv for "
+        "MSGARCH) against data/processed/<series>/test_eps.csv; Panel D "
+        "uses the training-split unconditional variance, constant over "
+        "the OOS window (matching Tables 4-7's reference row). A "
+        "1e-6xsigma2_train floor is applied before dividing (Section 9.7, "
+        "src.eval.run_all_metrics). Excess kurtosis: bias-corrected "
+        "(Fisher) sample kurtosis of z_t. "
+        f"LBQ²({nlags}): Ljung--Box Q p-value for serial correlation in "
+        f"z_t^2 up to lag {nlags} (H0: no autocorrelation left in the "
+        f"squared standardized residuals). ARCH-LM({nlags}): Engle's "
+        f"(1982) LM test p-value for remaining ARCH effects in z_t, "
+        f"{nlags} lags (H0: none left). Both are the same diagnostics "
+        "Table 1 runs on the raw series, here run on what each model's "
+        "variance forecast left behind: p >= 0.05 means that model "
+        "adequately captured the volatility clustering at that series; "
+        "a starred p < 0.05 means significant ARCH structure remains "
+        "unexplained. '—' = sigma2_test not available for that (model, "
+        "series) pair. *** p<0.01, ** p<0.05, * p<0.10."
+    )
+    stem = out_dir / "Table2_residual_diagnostics"
+    _save_all(
+        df, stem,
+        "Table 2. Residual Diagnostics by Model — Kurtosis, LBQ², and ARCH-LM on Standardized OOS Residuals",
+        "tab:residual_diagnostics", note, panel_rows=panel_rows,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Table 13 — Gate <-> GARCH parameter correspondence (Section 9.3)
 #
 # Numbering note: the brief names this "Table 11", but Table 11 (a-d, risk
@@ -1463,6 +1695,10 @@ def run(config_path: str) -> None:
     # ── Table 1: descriptive statistics of the raw return series ─────────────
     log.info("Building Table 1 (descriptive statistics) …")
     build_table1_descriptive_stats(series_list, processed_dir, tables_dir)
+
+    # ── Table 2: residual diagnostics by model ────────────────────────────────
+    log.info("Building Table 2 (residual diagnostics) …")
+    build_table2_residual_diagnostics(series_list, models_dir, processed_dir, tables_dir)
 
     # ── Table 3: roster ───────────────────────────────────────────────────────
     log.info("Building Table 3 (roster) …")

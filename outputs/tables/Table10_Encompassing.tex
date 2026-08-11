@@ -4,7 +4,9 @@
 \label{tab:encompassing}
 \begin{tabular}{lrrrrrrrrrrrr}
 \toprule
- & ('BTC-USD', 'β_cand') & ('BTC-USD', 'verdict') & ('ETH-USD', 'β_cand') & ('ETH-USD', 'verdict') & ('DJIA', 'β_cand') & ('DJIA', 'verdict') & ('SP500', 'β_cand') & ('SP500', 'verdict') & ('GOLD', 'β_cand') & ('GOLD', 'verdict') & ('OIL', 'β_cand') & ('OIL', 'verdict') \\
+ & \multicolumn{2}{c}{BTC-USD} & \multicolumn{2}{c}{ETH-USD} & \multicolumn{2}{c}{DJIA} & \multicolumn{2}{c}{SP500} & \multicolumn{2}{c}{GOLD} & \multicolumn{2}{c}{OIL} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}\cmidrule(lr){12-13}
+ & β_cand & verdict & β_cand & verdict & β_cand & verdict & β_cand & verdict & β_cand & verdict & β_cand & verdict \\
 \midrule
 GARCH-LSTM vs. ARCH(1) & -0.016 & Benchmark suff. & 0.721 & Neither sig. & 0.024 & Neither sig. & 0.419 & Neither sig. & 0.969** & Both contribute & 1.744*** & Adds info \\
 GARCH-LSTM vs. GARCH(1,1) & 0.937 & Neither sig. & 1.238*** & Adds info & -0.507 & Neither sig. & -0.418 & Neither sig. & 0.494** & Adds info & -0.707 & Neither sig. \\
