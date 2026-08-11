@@ -1,5 +1,5 @@
 """
-build_tables.py — Emit Tables 3–13, B1, 4e, and A1–A4 in .csv, .tex (booktabs), .docx.
+build_tables.py — Emit Tables 1, 3–13, B1, 4e, and A1–A4 in .csv, .tex (booktabs), .docx.
 
 Usage:
     python -m src.reporting.build_tables --config config/config.yaml
@@ -10,12 +10,14 @@ Input:  outputs/tables/raw_results.json
         outputs/tables/gate_correspondence_raw.json
         outputs/tables/ablation_ladder_raw.json
         outputs/models/<model>/<series>/{params.json, fit_info.json}
+        data/processed/<series>/returns.csv
 Output: outputs/tables/  *.csv  *.tex  *.docx
 
 Table numbering (paper convention; every number below is unique --
 Section 9.6 fixed a "Table 4" collision between the per-series OOS
 tables and the GARCH estimation table, which is Table 4e)
 ------------------------------------------------------------------
+Table 1       — Descriptive statistics of the six raw return series
 Table 3       — Model roster (static)
 Tables 4–7    — OOS performance, one per series (includes Panel D, the
                 constant-forecast reference row, and a DEGENERATE column)
@@ -43,6 +45,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from scipy import stats
+from statsmodels.stats.diagnostic import acorr_ljungbox, het_arch
 
 logging.basicConfig(
     level=logging.INFO,
@@ -231,6 +234,77 @@ def _save_all(df: pd.DataFrame, stem: Path, caption: str, label: str, note: str,
     _save_csv(df, stem.with_suffix(".csv"), panel_rows)
     _save_tex(df, stem.with_suffix(".tex"), caption, label, note, panel_rows)
     _save_docx(df, stem.with_suffix(".docx"), caption, note, panel_rows)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Table 1 — Descriptive statistics of the six raw return series
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_table1_descriptive_stats(
+    series_list: list[str],
+    processed_dir: Path,
+    out_dir: Path,
+    nlags: int = 20,
+) -> None:
+    """
+    Table 1: per series, N, mean, std. dev., skewness, excess kurtosis
+    (all on the raw 100x log-return series, data/processed/<series>/
+    returns.csv -- full sample, before any train/val/test split), plus
+    two volatility-clustering diagnostics on that same series: the
+    Ljung-Box Q test on squared returns (LBQ^2) and Engle's ARCH-LM
+    test, both at `nlags` lags. Skips a series silently (with a warning)
+    if its returns.csv hasn't been built yet.
+    """
+    rows = []
+    for series in series_list:
+        path = processed_dir / series / "returns.csv"
+        if not path.exists():
+            log.warning("%s not found — skipping Table 1 row for %s "
+                        "(run src.data.build_dataset first).", path, series)
+            continue
+
+        r = pd.read_csv(path)["returns"].to_numpy(dtype=float)
+        n = r.size
+
+        lbq2 = acorr_ljungbox(r ** 2, lags=[nlags], return_df=True)
+        lbq2_stat = float(lbq2["lb_stat"].iloc[0])
+        lbq2_p    = float(lbq2["lb_pvalue"].iloc[0])
+
+        lm_stat, lm_p, _, _ = het_arch(r, nlags=nlags)
+
+        rows.append({
+            "Series":                      series,
+            "N":                           str(n),
+            "Mean":                        _fmt(float(np.mean(r)), 4),
+            "Std. Dev.":                   _fmt(float(np.std(r, ddof=1)), 4),
+            "Skewness":                    _fmt(float(stats.skew(r, bias=False)), 4),
+            "Excess Kurtosis":             _fmt(float(stats.kurtosis(r, fisher=True, bias=False)), 4),
+            f"LBQ²({nlags})":         f"{lbq2_stat:.3f}{_sig_stars(lbq2_p)}",
+            f"LBQ²({nlags}) p-value": _fmt(lbq2_p, 4),
+            f"ARCH-LM({nlags})":           f"{float(lm_stat):.3f}{_sig_stars(float(lm_p))}",
+            f"ARCH-LM({nlags}) p-value":   _fmt(float(lm_p), 4),
+        })
+
+    if not rows:
+        log.warning("No series had a returns.csv — skipping Table 1.")
+        return
+
+    df = pd.DataFrame(rows).set_index("Series")
+    note = (
+        "Full-sample raw returns, 100x log-return (pp), before the train/"
+        "validation/test split. Std. Dev.: sample s.d. (ddof=1). Skewness "
+        "and excess kurtosis: bias-corrected (Fisher) sample moments "
+        f"(scipy.stats, bias=False). LBQ\\textsuperscript{{2}}({nlags}): "
+        f"Ljung--Box Q test for serial correlation in squared returns up to "
+        f"lag {nlags} (H0: no autocorrelation -- rejection is evidence of "
+        f"volatility clustering). ARCH-LM({nlags}): Engle's (1982) "
+        f"Lagrange-multiplier test for ARCH effects, {nlags} lags (H0: no "
+        "ARCH effects). Both diagnostics computed on raw returns "
+        "(statsmodels.stats.diagnostic). *** p<0.01, ** p<0.05, * p<0.10."
+    )
+    stem = out_dir / "Table1_descriptive_stats"
+    _save_all(df, stem, "Table 1. Descriptive Statistics of the Return Series",
+              "tab:descriptive_stats", note)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1385,6 +1459,10 @@ def run(config_path: str) -> None:
                      "will show '—' (run `python -m src.eval.degeneracy` first).")
 
     series_list = [s["name"] for s in cfg["series"]]
+
+    # ── Table 1: descriptive statistics of the raw return series ─────────────
+    log.info("Building Table 1 (descriptive statistics) …")
+    build_table1_descriptive_stats(series_list, processed_dir, tables_dir)
 
     # ── Table 3: roster ───────────────────────────────────────────────────────
     log.info("Building Table 3 (roster) …")
