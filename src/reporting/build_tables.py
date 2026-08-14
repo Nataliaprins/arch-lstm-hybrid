@@ -92,6 +92,34 @@ def _sig_stars(p) -> str:
     return ""
 
 
+# Cosmetic display relabel ONLY: every internal lookup key, model folder
+# name (outputs/models/GARCH-LSTM/...), raw_results.json / encompassing_
+# results.json entry, and ENCOMPASSING_PAIRS tuple keeps using the real
+# name "GARCH-LSTM" (the GARCH(1,1)-restricted LSTM cell,
+# src.models.arch_restricted). Only the rendered label in tables/figures
+# changes. Do NOT extend this to the actual (different, still separately
+# referenced) "LSTM-SSE-t-Student" model -- the free-gate SSE+Student-t
+# LSTM in src.models.neural.build_lstm_t_student, with its own
+# outputs/models/LSTM-SSE-t-Student/ folder -- this alias exists purely so
+# GARCH-LSTM's rows/columns/captions print under that label; it must never
+# be used for a dict/folder lookup.
+DISPLAY_NAME = {"GARCH-LSTM": "LSTM-SSE-t-Student"}
+
+# Architectures excluded from every table in this battery (user decision):
+# "ARCH-LSTM" (the ARCH(1)-restricted diagnostic, outputs/models/ARCH-LSTM/)
+# and the actual "LSTM-SSE-t-Student" model (outputs/models/LSTM-SSE-t-
+# Student/, the free-gate SSE+Student-t LSTM) -- NOT to be confused with
+# GARCH-LSTM's DISPLAY_NAME alias above, which reuses that same string as
+# a label, not a lookup key. Applied wherever a model list is built from
+# raw_results.json / encompassing_results.json; PANEL_ORDER's "Panel C"
+# below simply omits "ARCH-LSTM" outright since it's a static list.
+EXCLUDED_MODELS = {"ARCH-LSTM", "LSTM-SSE-t-Student"}
+
+
+def _disp(name: str) -> str:
+    return DISPLAY_NAME.get(name, name)
+
+
 def _save_csv(df: pd.DataFrame, path: Path, panel_rows: set | None = None) -> None:
     if panel_rows:
         # A panel-divider row in CSV: keep the panel label as the index,
@@ -392,9 +420,8 @@ ROSTER_DATA = [
     ("Panel B", "TCN",             "DL",          "Dilated causal Conv",  "Keras/TF",         "DL baseline"),
     ("Panel B", "Transformer",     "DL",          "Encoder-only transformer", "Keras/TF",     "DL baseline"),
     # Panel C — Proposed
-    ("Panel C", "ARCH-LSTM", "DL (diagnostic)",
-     "ARCH(1)-restricted LSTM cell (5 structural constraints)", "Keras/TF",
-     "Optimizer diagnostic (ARCH(1) recovery, not a proposed forecasting model)"),
+    # ARCH-LSTM row removed (EXCLUDED_MODELS, user decision): the
+    # ARCH(1)-restricted diagnostic no longer appears in this battery.
     ("Panel C", "GARCH-LSTM", "DL (diagnostic)",
      "GARCH(1,1)-restricted LSTM cell (trainable forget gate, bounded "
      "persistence/mix reparametrization)", "Keras/TF",
@@ -405,6 +432,7 @@ ROSTER_DATA = [
 def build_table3(out_dir: Path) -> None:
     cols    = ["Panel", "Model", "Family", "Specification", "Package", "Role"]
     df      = pd.DataFrame(ROSTER_DATA, columns=cols).set_index("Model")
+    df.index = [_disp(m) for m in df.index]
     note    = ("Returns scaled as 100×log-retornos (pp). All parametric models use "
                "Student-t innovations. Neural models: S=10 seeds, mean ± s.d. reported. "
                "ε²_t as volatility proxy for all evaluations.")
@@ -421,7 +449,8 @@ PANEL_ORDER = {
                 "FIGARCH(1,d,1)", "MSGARCH(1,1)", "HAR"],
     "Panel B": ["SVR-GARCH", "NN-GARCH", "LSTM-SSE", "CNN-LSTM",
                 "LSTM-Attention", "TCN", "Transformer"],
-    "Panel C": ["ARCH-LSTM", "GARCH-LSTM"],
+    # ARCH-LSTM omitted (EXCLUDED_MODELS, user decision).
+    "Panel C": ["GARCH-LSTM"],
     # Section 9.2: minimum-bar reference forecast every other model must beat.
     "Panel D": ["Constant (unconditional variance)"],
 }
@@ -515,7 +544,7 @@ def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
         panel_rows.add(panel)
         for m in models:
             if m in results:
-                rows.append((m, _oos_row(m, results[m], degeneracy)))
+                rows.append((_disp(m), _oos_row(m, results[m], degeneracy)))
 
     df_raw = pd.DataFrame(
         [r for _, r in rows],
@@ -565,7 +594,7 @@ def build_table_oos(series: str, results: dict, tnum: int, out_dir: Path,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def build_table8(all_results: dict, series_list: list[str], out_dir: Path) -> None:
-    all_models = sorted({m for s in all_results.values() for m in s})
+    all_models = sorted({m for s in all_results.values() for m in s} - EXCLUDED_MODELS)
     # Multi-level columns: series × {Delta_MSE, Delta_MAE}
     col_tuples = [(s, metric) for s in series_list for metric in ["Δ%MSE", "Δ%MAE"]]
     cols       = pd.MultiIndex.from_tuples(col_tuples)
@@ -608,7 +637,7 @@ def build_table8(all_results: dict, series_list: list[str], out_dir: Path) -> No
             row.extend([_cell(dm_pct), _cell(mae_pct)])
         rows.append(row)
 
-    df = pd.DataFrame(rows, index=all_models, columns=cols)
+    df = pd.DataFrame(rows, index=[_disp(m) for m in all_models], columns=cols)
     note = (
         "Percentage change relative to GARCH(1,1) (reference row shown as "
         "--). \\textbf{Bold} = proposed model significantly beats this "
@@ -631,7 +660,7 @@ def build_table8(all_results: dict, series_list: list[str], out_dir: Path) -> No
 def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> None:
     all_models = sorted({
         m for s in all_results.values()
-        for m in s if m != "GARCH-LSTM"
+        for m in s if m != "GARCH-LSTM" and m not in EXCLUDED_MODELS
     })
 
     col_tuples = [(s, stat) for s in series_list for stat in ["DM", "p(Holm)", "TOST p"]]
@@ -658,9 +687,9 @@ def build_table9(all_results: dict, series_list: list[str], out_dir: Path) -> No
             row.extend([dm_str, ph_str, tost_str])
         rows.append(row)
 
-    df = pd.DataFrame(rows, index=all_models, columns=cols)
+    df = pd.DataFrame(rows, index=[_disp(m) for m in all_models], columns=cols)
     note = (
-        "Diebold–Mariano test: GARCH-LSTM vs. each rival model. "
+        f"Diebold–Mariano test: {_disp('GARCH-LSTM')} vs. each rival model. "
         "Loss function: QLIKE. HAC SE (Newey–West, bandwidth ⌊4(T/100)^{2/9}⌋). "
         "p(Holm): p-value after Holm–Bonferroni FWER correction per market. "
         "Positive DM stat: rival has higher loss → proposed wins. "
@@ -716,7 +745,7 @@ def build_table10(encompassing_all: dict, series_list: list[str], out_dir: Path)
             row.extend([b_str, verdict])
         rows.append(row)
 
-    pair_labels = [p.replace("_vs_", " vs. ") for p in all_pairs]
+    pair_labels = [" vs. ".join(_disp(t) for t in p.split("_vs_")) for p in all_pairs]
     df = pd.DataFrame(rows, index=pair_labels, columns=cols)
 
     note = (
@@ -786,7 +815,7 @@ def build_table11_risk(series: str, results: dict, tlabel: str, out_dir: Path) -
     if not results:
         return
 
-    all_models = sorted(results.keys())
+    all_models = sorted(set(results.keys()) - EXCLUDED_MODELS)
     levels = sorted({
         lv
         for m in results.values()
@@ -799,7 +828,7 @@ def build_table11_risk(series: str, results: dict, tlabel: str, out_dir: Path) -
         row = {}
         for lv in levels:
             row.update(_risk_row(m_res, lv))
-        rows.append((model, row))
+        rows.append((_disp(model), row))
 
     if not rows:
         return
@@ -853,7 +882,7 @@ def build_table12_risk_summary(all_results: dict, series_list: list[str], out_di
     validly combines the four markets' p-values via Fisher's method
     (replacing the previous, invalid arithmetic mean of p-values).
     """
-    all_models = sorted({m for s in all_results.values() for m in s})
+    all_models = sorted({m for s in all_results.values() for m in s} - EXCLUDED_MODELS)
     levels = ["0.99", "0.975"]
 
     rows = []
@@ -867,7 +896,7 @@ def build_table12_risk_summary(all_results: dict, series_list: list[str], out_di
                 esbt = ves.get("es_backtest", {})
 
                 rows.append({
-                    "Series": series, "Level": lv, "Model": model,
+                    "Series": series, "Level": lv, "Model": _disp(model),
                     "n_exc": st.get("n_exc"),
                     "n_exp": (float(st["T"]) * (1.0 - float(lv))) if st.get("T") is not None else None,
                     "CoverageRate": st.get("exc_rate"),
@@ -887,7 +916,7 @@ def build_table12_risk_summary(all_results: dict, series_list: list[str], out_di
             _, p_cc_comb = _fisher_combine(p_cc_list)
             _, es_p_comb = _fisher_combine(es_p_list)
             rows.append({
-                "Series": "Combined (Fisher)", "Level": lv, "Model": model,
+                "Series": "Combined (Fisher)", "Level": lv, "Model": _disp(model),
                 "n_exc": None, "n_exp": None, "CoverageRate": None,
                 "LR_uc": None, "p_uc": p_uc_comb,
                 "LR_ind": None, "p_ind": p_ind_comb,
@@ -1253,7 +1282,7 @@ def build_table2_residual_diagnostics(
                     row[(series, c)] = v
 
             if found_any:
-                rows.append((model, row))
+                rows.append((_disp(model), row))
 
     if len(rows) <= len(panel_rows):
         log.warning("No sigma2_test files found for any (model, series) pair "
@@ -1534,8 +1563,8 @@ def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], 
     ]
     metric_cols = ["MSE", "MAE", "R2", "QLIKE"]
     var_level = "0.99"
-    col_tuples = [(m, c) for m in models for c in metric_cols] + \
-                 [(m, c) for m in models for c in
+    col_tuples = [(_disp(m), c) for m in models for c in metric_cols] + \
+                 [(_disp(m), c) for m in models for c in
                   ["VaR exc/T (99%)", "Kupiec p_uc", "KupiecPass", "Christ. p_cc", "ChristPass", "ES Z2 (99%)"]]
     cols = pd.MultiIndex.from_tuples(col_tuples)
 
@@ -1577,7 +1606,7 @@ def build_table_c3_arch1_vs_archlstm(all_results: dict, series_list: list[str], 
 
     df = pd.DataFrame(rows, index=kept_series, columns=cols)
     garch11_note = (
-        " GARCH-LSTM: the GARCH(1,1)-restricted extension "
+        f" {_disp('GARCH-LSTM')}: the GARCH(1,1)-restricted extension "
         "(trainable forget gate, bounded persistence/mix reparametrization, "
         "same S=10-seed OOS convention) -- see Table C1 for whether it "
         "recovers GARCH(1,1)'s own (alpha, beta) parameters."
@@ -1752,17 +1781,13 @@ def run(config_path: str) -> None:
     log.info("Building Table B1 (ablation ladder) …")
     build_table_b1(tables_dir)
 
-    # ── Table C2: ARCH(1)-restricted LSTM (lambda, nu) sensitivity sweep ─────
-    log.info("Building Table C2 (ARCH-LSTM lambda/nu sensitivity) …")
-    build_table_c2_lambda_nu_sensitivity(tables_dir, models_dir)
-
-    # ── Table C3: ARCH(1) vs. ARCH-LSTM head-to-head (metrics + VaR) ─────────
-    log.info("Building Table C3 (ARCH(1) vs ARCH-LSTM) …")
-    build_table_c3_arch1_vs_archlstm(all_results, series_list, tables_dir)
-
-    # ── Table C4: ARCH-LSTM forecast metrics by split ─────────────────────────
-    log.info("Building Table C4 (ARCH-LSTM by split) …")
-    build_table_c4_archlstm_by_split(tables_dir)
+    # ── Tables C2-C4: skipped -- entirely about ARCH-LSTM (EXCLUDED_MODELS,
+    # user decision). The builder functions are left intact (not deleted)
+    # in case ARCH-LSTM analysis is needed again later; only the calls are
+    # skipped here, and any stale *_arch_restricted_* / *_archlstm_*
+    # output files should be removed by hand from tables_dir since this
+    # run() never overwrites files it doesn't build.
+    log.info("Skipping Tables C2-C4 (ARCH-LSTM-only diagnostics; excluded) …")
 
     log.info("══ build_tables complete — outputs in %s ══", tables_dir)
 

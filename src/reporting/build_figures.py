@@ -34,6 +34,14 @@ import numpy as np
 import pandas as pd
 import yaml
 
+# Cosmetic display relabel (build_tables.DISPLAY_NAME): GARCH-LSTM prints
+# as "LSTM-SSE-t-Student" in figure titles/labels only -- every path here
+# (model_folder / model params) still uses the real folder name
+# "GARCH-LSTM" to find outputs/models/GARCH-LSTM/... on disk. See
+# build_tables.py's DISPLAY_NAME docstring for why this must never be
+# used for a path/dict lookup.
+from src.reporting.build_tables import _disp
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -158,7 +166,7 @@ def build_trainval_curves(
             ax.set_title(ttl)
 
         axes[1].legend(fontsize=7, ncol=2, loc="upper right")
-        fig.suptitle(f"{model_folder} — {series} (S={S} seeds)", fontsize=12)
+        fig.suptitle(f"{_disp(model_folder)} — {series} (S={S} seeds)", fontsize=12)
         fig.tight_layout()
         _savefig(fig, fig_dir / f"trainval_{series}_{model_folder}.pdf")
 
@@ -166,6 +174,48 @@ def build_trainval_curves(
 # ──────────────────────────────────────────────────────────────────────────────
 # Figure 3 — Gate dynamics / σ²_t multi-seed stability
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _compute_gate_dynamics(series: str, models_dir: Path, processed_dir: Path, model_folder: str) -> "dict | None":
+    """Shared computation behind build_gate_dynamics and build_gate_dynamics_panel."""
+    per_seed_f = models_dir / model_folder / series / "sigma2_per_seed.npy"
+    if not per_seed_f.exists():
+        return None
+
+    per_seed  = np.load(per_seed_f)            # (S, n_test)
+    mean_s2   = per_seed.mean(axis=0)
+    std_s2    = per_seed.std(axis=0)
+
+    proxy_f = processed_dir / series / "test_eps2.csv"
+    if proxy_f.exists():
+        proxy = pd.read_csv(proxy_f, index_col=0, parse_dates=True).iloc[:, 0].values
+    else:
+        proxy = None
+
+    return {"mean_s2": mean_s2, "std_s2": std_s2, "proxy": proxy}
+
+
+def _plot_gate_dynamics_ax(
+    ax, series: str, gd: dict, model_folder: str,
+    show_legend: bool = True, full_title: bool = True,
+) -> None:
+    """Draw one series' gate-dynamics panel onto `ax` (gd = _compute_gate_dynamics's return dict)."""
+    mean_s2, std_s2, proxy = gd["mean_s2"], gd["std_s2"], gd["proxy"]
+    t = np.arange(len(mean_s2))
+    ax.fill_between(t, mean_s2 - std_s2, mean_s2 + std_s2,
+                    alpha=0.3, color=COLORS[0], label="Mean ± 1 s.d.")
+    ax.plot(t, mean_s2, color=COLORS[0], linewidth=1.5, label="σ²_t (mean)")
+    if proxy is not None:
+        n = min(len(proxy), len(t))
+        ax.scatter(t[:n], proxy[:n], s=2, color="gray", alpha=0.3, label="ε²_t (proxy)")
+    ax.set_xlabel("OOS observation")
+    ax.set_ylabel("Conditional variance")
+    if full_title:
+        ax.set_title(f"{_disp(model_folder)} — {series}: Multi-seed σ²_t stability")
+    else:
+        ax.set_title(series)
+    if show_legend:
+        ax.legend(fontsize=9)
+
 
 def build_gate_dynamics(
     series_list: list[str],
@@ -175,35 +225,61 @@ def build_gate_dynamics(
     model_folder: str = "GARCH-LSTM",
 ) -> None:
     for series in series_list:
-        per_seed_f = models_dir / model_folder / series / "sigma2_per_seed.npy"
-        if not per_seed_f.exists():
+        gd = _compute_gate_dynamics(series, models_dir, processed_dir, model_folder)
+        if gd is None:
             continue
 
-        per_seed  = np.load(per_seed_f)            # (S, n_test)
-        mean_s2   = per_seed.mean(axis=0)
-        std_s2    = per_seed.std(axis=0)
-
-        # Load proxy
-        proxy_f = processed_dir / series / "test_eps2.csv"
-        if proxy_f.exists():
-            proxy = pd.read_csv(proxy_f, index_col=0, parse_dates=True).iloc[:, 0].values
-        else:
-            proxy = None
-
         fig, ax = plt.subplots(figsize=(10, 4))
-        t = np.arange(len(mean_s2))
-        ax.fill_between(t, mean_s2 - std_s2, mean_s2 + std_s2,
-                        alpha=0.3, color=COLORS[0], label="Mean ± 1 s.d.")
-        ax.plot(t, mean_s2, color=COLORS[0], linewidth=1.5, label="σ²_t (mean)")
-        if proxy is not None:
-            n = min(len(proxy), len(t))
-            ax.scatter(t[:n], proxy[:n], s=2, color="gray", alpha=0.3, label="ε²_t (proxy)")
-        ax.set_xlabel("OOS observation")
-        ax.set_ylabel("Conditional variance")
-        ax.set_title(f"{model_folder} — {series}: Multi-seed σ²_t stability")
-        ax.legend(fontsize=9)
+        _plot_gate_dynamics_ax(ax, series, gd, model_folder)
         fig.tight_layout()
         _savefig(fig, fig_dir / f"gate_dynamics_{series}.pdf")
+
+
+def build_gate_dynamics_panel(
+    series_list: list[str],
+    models_dir:  Path,
+    processed_dir: Path,
+    fig_dir:     Path,
+    model_folder: str = "GARCH-LSTM",
+    nrows: int = 3,
+    ncols: int = 2,
+) -> None:
+    """
+    Same computation as build_gate_dynamics (one panel per series), laid
+    out as a single nrows x ncols grid figure instead of one file per
+    series -- default 3x2 for the project's 6 series. A series with no
+    sigma2_per_seed.npy gets a hidden (blank) subplot rather than
+    aborting the whole panel; the legend is shown once, on the first
+    successfully-plotted subplot.
+    """
+    if len(series_list) > nrows * ncols:
+        log.warning("%d series but only %dx%d=%d subplot slots; extra series will be dropped.",
+                    len(series_list), nrows, ncols, nrows * ncols)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(7.5 * ncols, 3.4 * nrows), squeeze=False)
+    axes_flat = axes.ravel()
+
+    plotted = 0
+    for ax, series in zip(axes_flat, series_list):
+        gd = _compute_gate_dynamics(series, models_dir, processed_dir, model_folder)
+        if gd is None:
+            ax.set_visible(False)
+            continue
+        _plot_gate_dynamics_ax(ax, series, gd, model_folder,
+                                show_legend=(plotted == 0), full_title=False)
+        plotted += 1
+
+    for ax in axes_flat[len(series_list):]:
+        ax.set_visible(False)
+
+    if plotted == 0:
+        log.warning("No series had loadable %s sigma2_per_seed.npy; skipping panel figure.", model_folder)
+        plt.close(fig)
+        return
+
+    fig.suptitle(f"{_disp(model_folder)}: estabilidad multi-semilla de σ²_t por serie", fontsize=14, y=1.02)
+    fig.tight_layout()
+    _savefig(fig, fig_dir / f"gate_dynamics_panel_{model_folder}.pdf")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -253,7 +329,7 @@ def build_var_figures(
         axes[1].set_ylabel("VaR hit")
         axes[1].set_xlabel("OOS observation")
 
-        fig.suptitle(f"{model} — {series}  VaR {level:.0%} Hit Sequence", fontsize=12)
+        fig.suptitle(f"{_disp(model)} — {series}  VaR {level:.0%} Hit Sequence", fontsize=12)
         fig.tight_layout()
         _savefig(fig, fig_dir / f"var_hits_{series}_{level:.0%}.pdf")
 
@@ -261,6 +337,149 @@ def build_var_figures(
 # ──────────────────────────────────────────────────────────────────────────────
 # Figure 5 — forecast vs observed, full timeline (train / val / test)
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _compute_forecast_vs_observed(
+    series:        str,
+    cfg:           dict,
+    models_dir:    Path,
+    processed_dir: Path,
+    model_folder:  str,
+    model_builder: "Callable[[dict], object]",
+) -> "dict | None":
+    """
+    Shared computation behind build_forecast_vs_observed and
+    build_forecast_vs_observed_panel: σ̂²_t (mean across seeds) vs the
+    realized-variance proxy ε²_t, over the FULL timeline (train +
+    validation + test/OOS). Only OOS sigma2_test.npy is saved by the
+    training pipeline (_multiseed_train_and_predict) -- train/val
+    forecasts don't exist on disk anywhere, so they're rebuilt here from
+    each seed's saved weights.weights.h5 (same rebuild-and-load pattern as
+    src.eval.gate_correspondence.compute_gate_statistics_one_seed) and
+    averaged across seeds exactly like the OOS aggregation already does.
+
+    model_builder: the hp-dict -> tf.keras.Model factory matching
+    model_folder's saved weights. A mismatched builder will fail to
+    load_weights (different architecture, different tensor shapes), not
+    silently produce wrong numbers.
+
+    Window/target alignment (see src.tuning.tune_and_train._make_windows
+    and _run_model_series): y_train's dates are train dates[window:]  (the
+    first `window` observations have no full lookback yet); y_val's and
+    the test set's dates line up 1:1 with the full val/test date ranges
+    (their windows are allowed to look back across the split boundary,
+    which is correct/expected sliding-window behavior, not a leak of
+    labels).
+
+    Returns None (with a logged warning) if that series has no loadable
+    seed weights, or its saved weights are architecturally incompatible
+    with the current data.window.
+    """
+    import tensorflow as tf
+    from src.tuning.tune_and_train import _load_series, _make_windows
+    from src.losses.hybrid_student_t import sigma2_from_direct_output
+
+    W = cfg["data"]["window"]
+
+    model_dir = models_dir / model_folder / series
+    hp_path = model_dir / "best_hparams.json"
+    seed_dirs = sorted(model_dir.glob("seed_*")) if model_dir.exists() else []
+    if not hp_path.exists() or not seed_dirs:
+        log.warning("[%s] no best_hparams.json / seed weights under %s; skipping.", series, model_dir)
+        return None
+    hp = json.loads(hp_path.read_text())
+
+    data = _load_series(series, processed_dir)
+    train_x, val_x, test_x = data["train_x_scaled"], data["val_x_scaled"], data["test_x_scaled"]
+    train_eps2, val_eps2, test_eps2 = data["train_eps2"], data["val_eps2"], data["test_eps2"]
+
+    X_train, y_train = _make_windows(train_x, train_eps2, W)
+    tv_x = np.concatenate([train_x, val_x])
+    tv_eps2 = np.concatenate([train_eps2, val_eps2])
+    X_tv, y_tv = _make_windows(tv_x, tv_eps2, W)
+    X_val, y_val = X_tv[len(X_train):], y_tv[len(y_train):]
+
+    full_x = np.concatenate([train_x, val_x, test_x])
+    full_eps2 = np.concatenate([train_eps2, val_eps2, test_eps2])
+    X_full, _ = _make_windows(full_x, full_eps2, W)
+    n_tv = len(train_x) + len(val_x)
+    X_test_w = X_full[n_tv - W:][:len(test_x)]
+
+    sigma2_train_seeds, sigma2_val_seeds, sigma2_test_seeds = [], [], []
+    try:
+        for seed_dir in seed_dirs:
+            weights_path = seed_dir / "weights.weights.h5"
+            if not weights_path.exists():
+                continue
+            model = model_builder(hp)
+            if not model.built:
+                model(X_train[:1])
+            model.load_weights(str(weights_path))
+            sigma2_train_seeds.append(sigma2_from_direct_output(model.predict(X_train, verbose=0).ravel()))
+            sigma2_val_seeds.append(sigma2_from_direct_output(model.predict(X_val, verbose=0).ravel()))
+            sigma2_test_seeds.append(sigma2_from_direct_output(model.predict(X_test_w, verbose=0).ravel()))
+            tf.keras.backend.clear_session()
+    except (ValueError, tf.errors.InvalidArgumentError) as exc:
+        # Saved weights were trained under a different data.window than
+        # the one currently in the config (e.g. a stale run predating a
+        # window change) -- architecturally incompatible, not a bug in
+        # this function. Skip the series instead of aborting every
+        # figure after it.
+        log.warning(
+            "[%s] saved weights incompatible with current data.window=%d "
+            "(likely trained under a different window); skipping. (%s)",
+            series, W, exc,
+        )
+        return None
+
+    if not sigma2_train_seeds:
+        log.warning("[%s] no loadable seed weights; skipping.", series)
+        return None
+
+    sigma2_train = np.mean(sigma2_train_seeds, axis=0)
+    sigma2_val   = np.mean(sigma2_val_seeds, axis=0)
+    sigma2_test  = np.mean(sigma2_test_seeds, axis=0)
+
+    dates_train_full = pd.read_csv(processed_dir / series / "train_eps2.csv", index_col=0, parse_dates=True).index
+    dates_val   = pd.read_csv(processed_dir / series / "val_eps2.csv",   index_col=0, parse_dates=True).index
+    dates_test  = pd.read_csv(processed_dir / series / "test_eps2.csv", index_col=0, parse_dates=True).index
+    dates_train = dates_train_full[W:]
+
+    dates    = dates_train.append(dates_val).append(dates_test)
+    observed = np.concatenate([y_train, val_eps2, test_eps2])
+    forecast = np.concatenate([sigma2_train, sigma2_val, sigma2_test])
+
+    return {
+        "dates": dates, "observed": observed, "forecast": forecast,
+        "val_start": dates_val[0], "test_start": dates_test[0],
+    }
+
+
+def _plot_forecast_vs_observed_ax(
+    ax, series: str, fd: dict, model_folder: str,
+    show_legend: bool = True, full_title: bool = True,
+) -> None:
+    """Draw one series' forecast-vs-observed panel onto `ax` (fd = _compute_forecast_vs_observed's return dict)."""
+    dates, observed, forecast = fd["dates"], fd["observed"], fd["forecast"]
+    val_start, test_start = fd["val_start"], fd["test_start"]
+
+    ax.plot(dates, observed, color="gray", linewidth=0.5, alpha=0.6, label="ε²_t (observado)")
+    ax.plot(dates, forecast, color=COLORS[0], linewidth=1.1, label="σ̂²_t (pronóstico, media entre semillas)")
+
+    ax.axvspan(dates[0], val_start, color=COLORS[2], alpha=0.06, label="Train")
+    ax.axvspan(val_start, test_start, color=COLORS[1], alpha=0.10, label="Validation")
+    ax.axvspan(test_start, dates[-1], color=COLORS[3], alpha=0.10, label="Test (OOS)")
+    ax.axvline(val_start, color="black", linestyle="--", linewidth=0.7)
+    ax.axvline(test_start, color="black", linestyle="-", linewidth=0.7)
+
+    ax.set_yscale("log")
+    ax.set_ylabel("Varianza condicional (pp², escala log)")
+    if full_title:
+        ax.set_title(f"{_disp(model_folder)} — {series}: pronóstico vs. observado (train / validation / test-OOS)")
+    else:
+        ax.set_title(series)
+    if show_legend:
+        ax.legend(fontsize=8, loc="upper left", ncol=2)
+
 
 def build_forecast_vs_observed(
     series_list:   list[str],
@@ -271,129 +490,74 @@ def build_forecast_vs_observed(
     model_folder:  str = "GARCH-LSTM",
     model_builder: "Callable[[dict], object] | None" = None,
 ) -> None:
-    """
-    σ̂²_t (mean across seeds) vs the realized-variance proxy ε²_t, over the
-    FULL timeline (train + validation + test/OOS), with the three splits
-    shaded. Only OOS sigma2_test.npy is saved by the training pipeline
-    (_multiseed_train_and_predict) -- train/val forecasts don't exist on
-    disk anywhere, so they're rebuilt here from each seed's saved
-    weights.weights.h5 (same rebuild-and-load pattern as
-    src.eval.gate_correspondence.compute_gate_statistics_one_seed) and
-    averaged across seeds exactly like the OOS aggregation already does.
-
-    model_builder: the hp-dict -> tf.keras.Model factory matching
-    model_folder's saved weights (default None resolves to
-    src.models.arch_restricted.build_arch_restricted_lstm, matching the
-    default model_folder="GARCH-LSTM" -- forget_gate_trainable is read
-    from that series' own saved best_hparams.json, no override needed).
-    A mismatched builder will fail to load_weights (different
-    architecture, different tensor shapes), not silently produce wrong
-    numbers.
-
-    Window/target alignment (see src.tuning.tune_and_train._make_windows
-    and _run_model_series): y_train's dates are train dates[window:]  (the
-    first `window` observations have no full lookback yet); y_val's and
-    the test set's dates line up 1:1 with the full val/test date ranges
-    (their windows are allowed to look back across the split boundary,
-    which is correct/expected sliding-window behavior, not a leak of
-    labels).
-    """
-    import tensorflow as tf
-    from src.tuning.tune_and_train import _load_series, _make_windows
-    from src.losses.hybrid_student_t import sigma2_from_direct_output
-
+    """One forecast-vs-observed .png per series -- see _compute_forecast_vs_observed for the shared computation."""
     if model_builder is None:
         from src.models.arch_restricted import build_arch_restricted_lstm
         model_builder = build_arch_restricted_lstm
 
-    W = cfg["data"]["window"]
-
     for series in series_list:
-        model_dir = models_dir / model_folder / series
-        hp_path = model_dir / "best_hparams.json"
-        seed_dirs = sorted(model_dir.glob("seed_*")) if model_dir.exists() else []
-        if not hp_path.exists() or not seed_dirs:
-            log.warning("[%s] no best_hparams.json / seed weights under %s; skipping.", series, model_dir)
+        fd = _compute_forecast_vs_observed(series, cfg, models_dir, processed_dir, model_folder, model_builder)
+        if fd is None:
             continue
-        hp = json.loads(hp_path.read_text())
-
-        data = _load_series(series, processed_dir)
-        train_x, val_x, test_x = data["train_x_scaled"], data["val_x_scaled"], data["test_x_scaled"]
-        train_eps2, val_eps2, test_eps2 = data["train_eps2"], data["val_eps2"], data["test_eps2"]
-
-        X_train, y_train = _make_windows(train_x, train_eps2, W)
-        tv_x = np.concatenate([train_x, val_x])
-        tv_eps2 = np.concatenate([train_eps2, val_eps2])
-        X_tv, y_tv = _make_windows(tv_x, tv_eps2, W)
-        X_val, y_val = X_tv[len(X_train):], y_tv[len(y_train):]
-
-        full_x = np.concatenate([train_x, val_x, test_x])
-        full_eps2 = np.concatenate([train_eps2, val_eps2, test_eps2])
-        X_full, _ = _make_windows(full_x, full_eps2, W)
-        n_tv = len(train_x) + len(val_x)
-        X_test_w = X_full[n_tv - W:][:len(test_x)]
-
-        sigma2_train_seeds, sigma2_val_seeds, sigma2_test_seeds = [], [], []
-        try:
-            for seed_dir in seed_dirs:
-                weights_path = seed_dir / "weights.weights.h5"
-                if not weights_path.exists():
-                    continue
-                model = model_builder(hp)
-                if not model.built:
-                    model(X_train[:1])
-                model.load_weights(str(weights_path))
-                sigma2_train_seeds.append(sigma2_from_direct_output(model.predict(X_train, verbose=0).ravel()))
-                sigma2_val_seeds.append(sigma2_from_direct_output(model.predict(X_val, verbose=0).ravel()))
-                sigma2_test_seeds.append(sigma2_from_direct_output(model.predict(X_test_w, verbose=0).ravel()))
-                tf.keras.backend.clear_session()
-        except (ValueError, tf.errors.InvalidArgumentError) as exc:
-            # Saved weights were trained under a different data.window than
-            # the one currently in the config (e.g. a stale run predating a
-            # window change) -- architecturally incompatible, not a bug in
-            # this function. Skip the series instead of aborting every
-            # figure after it.
-            log.warning(
-                "[%s] saved weights incompatible with current data.window=%d "
-                "(likely trained under a different window); skipping. (%s)",
-                series, W, exc,
-            )
-            continue
-
-        if not sigma2_train_seeds:
-            log.warning("[%s] no loadable seed weights; skipping.", series)
-            continue
-
-        sigma2_train = np.mean(sigma2_train_seeds, axis=0)
-        sigma2_val   = np.mean(sigma2_val_seeds, axis=0)
-        sigma2_test  = np.mean(sigma2_test_seeds, axis=0)
-
-        dates_train_full = pd.read_csv(processed_dir / series / "train_eps2.csv", index_col=0, parse_dates=True).index
-        dates_val   = pd.read_csv(processed_dir / series / "val_eps2.csv",   index_col=0, parse_dates=True).index
-        dates_test  = pd.read_csv(processed_dir / series / "test_eps2.csv", index_col=0, parse_dates=True).index
-        dates_train = dates_train_full[W:]
-
-        dates    = dates_train.append(dates_val).append(dates_test)
-        observed = np.concatenate([y_train, val_eps2, test_eps2])
-        forecast = np.concatenate([sigma2_train, sigma2_val, sigma2_test])
 
         fig, ax = plt.subplots(figsize=(14, 5))
-        ax.plot(dates, observed, color="gray", linewidth=0.5, alpha=0.6, label="ε²_t (observado)")
-        ax.plot(dates, forecast, color=COLORS[0], linewidth=1.1, label="σ̂²_t (pronóstico, media entre semillas)")
-
-        val_start, test_start = dates_val[0], dates_test[0]
-        ax.axvspan(dates[0], val_start, color=COLORS[2], alpha=0.06, label="Train")
-        ax.axvspan(val_start, test_start, color=COLORS[1], alpha=0.10, label="Validation")
-        ax.axvspan(test_start, dates[-1], color=COLORS[3], alpha=0.10, label="Test (OOS)")
-        ax.axvline(val_start, color="black", linestyle="--", linewidth=0.7)
-        ax.axvline(test_start, color="black", linestyle="-", linewidth=0.7)
-
-        ax.set_yscale("log")
-        ax.set_ylabel("Varianza condicional (pp², escala log)")
-        ax.set_title(f"{model_folder} — {series}: pronóstico vs. observado (train / validation / test-OOS)")
-        ax.legend(fontsize=8, loc="upper left", ncol=2)
+        _plot_forecast_vs_observed_ax(ax, series, fd, model_folder)
         fig.tight_layout()
         _savefig(fig, fig_dir / f"forecast_vs_observed_{model_folder}_{series}.png")
+
+
+def build_forecast_vs_observed_panel(
+    series_list:   list[str],
+    cfg:           dict,
+    models_dir:    Path,
+    processed_dir: Path,
+    fig_dir:       Path,
+    model_folder:  str = "GARCH-LSTM",
+    model_builder: "Callable[[dict], object] | None" = None,
+    nrows:         int = 3,
+    ncols:         int = 2,
+) -> None:
+    """
+    Same computation as build_forecast_vs_observed (one panel per series),
+    laid out as a single nrows x ncols grid figure instead of one file per
+    series -- default 3x2 for the project's 6 series. A series with no
+    loadable seed weights gets a hidden (blank) subplot rather than
+    aborting the whole panel; the legend is shown once, on the first
+    successfully-plotted subplot.
+    """
+    if model_builder is None:
+        from src.models.arch_restricted import build_arch_restricted_lstm
+        model_builder = build_arch_restricted_lstm
+
+    if len(series_list) > nrows * ncols:
+        log.warning("%d series but only %dx%d=%d subplot slots; extra series will be dropped.",
+                    len(series_list), nrows, ncols, nrows * ncols)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(7.5 * ncols, 3.4 * nrows), squeeze=False)
+    axes_flat = axes.ravel()
+
+    plotted = 0
+    for ax, series in zip(axes_flat, series_list):
+        fd = _compute_forecast_vs_observed(series, cfg, models_dir, processed_dir, model_folder, model_builder)
+        if fd is None:
+            ax.set_visible(False)
+            continue
+        _plot_forecast_vs_observed_ax(ax, series, fd, model_folder,
+                                       show_legend=(plotted == 0), full_title=False)
+        plotted += 1
+
+    for ax in axes_flat[len(series_list):]:
+        ax.set_visible(False)
+
+    if plotted == 0:
+        log.warning("No series had loadable %s weights; skipping panel figure.", model_folder)
+        plt.close(fig)
+        return
+
+    fig.suptitle(f"{_disp(model_folder)}: pronóstico vs. observado por serie "
+                 "(train / validation / test-OOS)", fontsize=14, y=1.02)
+    fig.tight_layout()
+    _savefig(fig, fig_dir / f"forecast_vs_observed_panel_{model_folder}.png")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -486,26 +650,30 @@ def run(config_path: str) -> None:
     log.info("Building gate-dynamics figures …")
     build_gate_dynamics(series_list, models_dir, processed_dir, figures_dir)
 
+    log.info("Building gate-dynamics panel (3x2, all series) …")
+    build_gate_dynamics_panel(series_list, models_dir, processed_dir, figures_dir)
+
     log.info("Building VaR hit-sequence figures …")
     build_var_figures(series_list, raw_results, models_dir, processed_dir, figures_dir)
 
-    log.info("Building forecast-vs-observed figures (ARCH-LSTM, by split) …")
-    from src.models.arch_restricted import build_arch_restricted_lstm
-    build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir,
-                                model_folder="ARCH-LSTM", model_builder=build_arch_restricted_lstm)
+    # ARCH-LSTM's own forecast-vs-observed figure and the "ARCH(1) vs.
+    # ARCH-LSTM" sensitivity-grid figure are both skipped (EXCLUDED_MODELS,
+    # user decision) -- build_forecast_arch1_vs_archlstm is entirely about
+    # that comparison and left defined but unused for the same reason.
+    log.info("Skipping ARCH-LSTM figures (excluded) …")
 
     log.info("Building forecast-vs-observed figures (GARCH-LSTM, by split) …")
-    # Same builder as ARCH-LSTM -- build_arch_restricted_lstm reads
-    # forget_gate_trainable=True from each series' own saved
-    # best_hparams.json, no separate factory needed. No-ops with a
-    # warning per series until the official run has actually produced
-    # outputs/models/GARCH-LSTM/<series>/seed_*/ weights.
+    from src.models.arch_restricted import build_arch_restricted_lstm
+    # build_arch_restricted_lstm reads forget_gate_trainable=True from
+    # each series' own saved best_hparams.json, no separate factory
+    # needed. No-ops with a warning per series until the official run has
+    # actually produced outputs/models/GARCH-LSTM/<series>/seed_*/ weights.
     build_forecast_vs_observed(series_list, cfg, models_dir, processed_dir, figures_dir,
                                 model_folder="GARCH-LSTM", model_builder=build_arch_restricted_lstm)
 
-    log.info("Building ARCH(1) vs ARCH-LSTM forecast figures …")
-    for series in series_list:
-        build_forecast_arch1_vs_archlstm(series, models_dir, processed_dir, figures_dir)
+    log.info("Building forecast-vs-observed panel (GARCH-LSTM, 3x2, all series) …")
+    build_forecast_vs_observed_panel(series_list, cfg, models_dir, processed_dir, figures_dir,
+                                      model_folder="GARCH-LSTM", model_builder=build_arch_restricted_lstm)
 
     log.info("══ build_figures complete — outputs in %s ══", figures_dir)
 
