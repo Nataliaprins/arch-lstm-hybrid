@@ -1,4 +1,4 @@
-# ── config.yaml — Replicación JRFM-4427748 ─────────────────────────────────
+# ── config.yaml — model configuration ─────────────────────────────────
 # Configuración central del pipeline. Modificar aquí; el código lee de aquí.
 
 paths:

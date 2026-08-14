@@ -1,4 +1,4 @@
-# ── Makefile — replicación JRFM-4427748 ──────────────────────────────
+# ── Makefile────────────────────────────
 # Uso: make all   (o por etapas: make data | models | eval | tables | figures)
 
 # GNU Make 3.81 (macOS's default) does not strip trailing whitespace before

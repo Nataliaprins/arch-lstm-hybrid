@@ -4,8 +4,8 @@ title: "LSTM with Hybrid Student-t Loss for Volatility Forecasting: Replication 
 version: "1.0.0"
 date-released: "2025-08-01"
 abstract: >
-  Replication repository for the JRFM paper on hybrid Student-t loss
-  for LSTM volatility forecasting. Includes ARCH/GARCH benchmarks,
+  This repository contains the code and data for hybrid Student-t loss
+  for LSTM volatility forecasting. The repository includes ARCH/GARCH benchmarks,
   ML/DL benchmarks, the proposed LSTM-SSE-t-Student model, and full
   OOS evaluation with DM tests, MCS, and VaR/ES backtests across four
   financial series (BTC-USD, ETH-USD, DJIA, S&P 500).
